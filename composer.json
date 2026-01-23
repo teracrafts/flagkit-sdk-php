@@ -1,0 +1,42 @@
+{
+    "name": "flagkit/flagkit-sdk",
+    "description": "Official PHP SDK for FlagKit feature flag management",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["feature-flags", "feature-toggles", "flagkit"],
+    "authors": [
+        {
+            "name": "FlagKit",
+            "email": "support@flagkit.dev"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "guzzlehttp/guzzle": "^7.0",
+        "psr/log": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^1.10",
+        "squizlabs/php_codesniffer": "^3.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "FlagKit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "FlagKit\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "lint": "phpcs src tests",
+        "analyse": "phpstan analyse src"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
