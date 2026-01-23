@@ -51,7 +51,6 @@ FlagKit::close();
 use FlagKit\FlagKitOptions;
 
 $options = FlagKitOptions::builder('sdk_your_api_key')
-    ->baseUrl('https://custom.api.flagkit.dev/api/v1')
     ->pollingInterval(60)
     ->cacheTtl(600)
     ->maxCacheSize(500)
@@ -72,7 +71,6 @@ Or using direct construction:
 ```php
 $options = new FlagKitOptions(
     apiKey: 'sdk_your_api_key',
-    baseUrl: 'https://custom.api.flagkit.dev/api/v1',
     pollingInterval: 60,
     cacheTtl: 600,
     maxCacheSize: 500,
@@ -240,7 +238,6 @@ try {
 | Property | Default | Description |
 |----------|---------|-------------|
 | `apiKey` | (required) | API key for authentication |
-| `baseUrl` | `https://api.flagkit.dev/api/v1` | API base URL |
 | `pollingInterval` | 30 | Polling interval (seconds) |
 | `cacheTtl` | 300 | Cache time-to-live (seconds) |
 | `maxCacheSize` | 1000 | Maximum cache entries |

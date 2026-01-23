@@ -15,6 +15,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class HttpClient
 {
+    private const BASE_URL = 'https://api.flagkit.dev/api/v1';
+
     private Client $client;
     private CircuitBreaker $circuitBreaker;
 
@@ -22,7 +24,7 @@ class HttpClient
         private readonly FlagKitOptions $options
     ) {
         $this->client = new Client([
-            'base_uri' => $options->baseUrl,
+            'base_uri' => self::BASE_URL,
             'timeout' => $options->timeout,
             'headers' => [
                 'Authorization' => 'Bearer ' . $options->apiKey,

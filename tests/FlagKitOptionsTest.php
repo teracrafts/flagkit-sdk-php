@@ -67,17 +67,6 @@ class FlagKitOptionsTest extends TestCase
         ];
     }
 
-    public function testInvalidBaseUrlThrows(): void
-    {
-        $options = new FlagKitOptions(
-            apiKey: 'sdk_test123',
-            baseUrl: 'not-a-url'
-        );
-
-        $this->expectException(FlagKitException::class);
-        $options->validate();
-    }
-
     public function testZeroPollingIntervalThrows(): void
     {
         $options = new FlagKitOptions(
@@ -103,7 +92,6 @@ class FlagKitOptionsTest extends TestCase
     public function testBuilderCreatesValidOptions(): void
     {
         $options = FlagKitOptions::builder('sdk_test123')
-            ->baseUrl('https://custom.api.com')
             ->pollingInterval(60)
             ->cacheTtl(600)
             ->maxCacheSize(500)
@@ -116,7 +104,6 @@ class FlagKitOptionsTest extends TestCase
             ->build();
 
         $this->assertEquals('sdk_test123', $options->apiKey);
-        $this->assertEquals('https://custom.api.com', $options->baseUrl);
         $this->assertEquals(60, $options->pollingInterval);
         $this->assertEquals(600, $options->cacheTtl);
         $this->assertEquals(500, $options->maxCacheSize);
@@ -147,7 +134,6 @@ class FlagKitOptionsTest extends TestCase
     {
         $options = new FlagKitOptions(apiKey: 'sdk_test123');
 
-        $this->assertEquals(FlagKitOptions::DEFAULT_BASE_URL, $options->baseUrl);
         $this->assertEquals(FlagKitOptions::DEFAULT_POLLING_INTERVAL, $options->pollingInterval);
         $this->assertEquals(FlagKitOptions::DEFAULT_CACHE_TTL, $options->cacheTtl);
         $this->assertEquals(FlagKitOptions::DEFAULT_MAX_CACHE_SIZE, $options->maxCacheSize);

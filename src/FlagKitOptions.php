@@ -9,7 +9,6 @@ use FlagKit\Error\FlagKitException;
 
 class FlagKitOptions
 {
-    public const DEFAULT_BASE_URL = 'https://api.flagkit.dev/api/v1';
     public const DEFAULT_POLLING_INTERVAL = 30;
     public const DEFAULT_CACHE_TTL = 300;
     public const DEFAULT_MAX_CACHE_SIZE = 1000;
@@ -22,7 +21,6 @@ class FlagKitOptions
 
     public function __construct(
         public readonly string $apiKey,
-        public readonly string $baseUrl = self::DEFAULT_BASE_URL,
         public readonly int $pollingInterval = self::DEFAULT_POLLING_INTERVAL,
         public readonly int $cacheTtl = self::DEFAULT_CACHE_TTL,
         public readonly int $maxCacheSize = self::DEFAULT_MAX_CACHE_SIZE,
@@ -64,13 +62,6 @@ class FlagKitOptions
             );
         }
 
-        if (!filter_var($this->baseUrl, FILTER_VALIDATE_URL)) {
-            throw FlagKitException::configError(
-                ErrorCode::ConfigInvalidBaseUrl,
-                'Invalid base URL'
-            );
-        }
-
         if ($this->pollingInterval <= 0) {
             throw FlagKitException::configError(
                 ErrorCode::ConfigInvalidPollingInterval,
@@ -94,7 +85,6 @@ class FlagKitOptions
 
 class FlagKitOptionsBuilder
 {
-    private string $baseUrl = FlagKitOptions::DEFAULT_BASE_URL;
     private int $pollingInterval = FlagKitOptions::DEFAULT_POLLING_INTERVAL;
     private int $cacheTtl = FlagKitOptions::DEFAULT_CACHE_TTL;
     private int $maxCacheSize = FlagKitOptions::DEFAULT_MAX_CACHE_SIZE;
@@ -112,12 +102,6 @@ class FlagKitOptionsBuilder
     public function __construct(
         private readonly string $apiKey
     ) {
-    }
-
-    public function baseUrl(string $url): self
-    {
-        $this->baseUrl = $url;
-        return $this;
     }
 
     public function pollingInterval(int $seconds): self
@@ -199,7 +183,6 @@ class FlagKitOptionsBuilder
     {
         return new FlagKitOptions(
             apiKey: $this->apiKey,
-            baseUrl: $this->baseUrl,
             pollingInterval: $this->pollingInterval,
             cacheTtl: $this->cacheTtl,
             maxCacheSize: $this->maxCacheSize,
