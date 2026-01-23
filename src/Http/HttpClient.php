@@ -20,11 +20,22 @@ class HttpClient
     private Client $client;
     private CircuitBreaker $circuitBreaker;
 
+    /**
+     * Returns the base URL for the given local port, or the default production URL.
+     */
+    public static function getBaseUrl(?int $localPort): string
+    {
+        if ($localPort !== null) {
+            return "http://localhost:{$localPort}/api/v1";
+        }
+        return self::BASE_URL;
+    }
+
     public function __construct(
         private readonly FlagKitOptions $options
     ) {
         $this->client = new Client([
-            'base_uri' => self::BASE_URL,
+            'base_uri' => self::getBaseUrl($options->localPort),
             'timeout' => $options->timeout,
             'headers' => [
                 'Authorization' => 'Bearer ' . $options->apiKey,

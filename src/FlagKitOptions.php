@@ -33,7 +33,9 @@ class FlagKitOptions
         public readonly int $circuitBreakerThreshold = self::DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
         public readonly int $circuitBreakerResetTimeout = self::DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT,
         /** @var array<string, mixed>|null */
-        public readonly ?array $bootstrap = null
+        public readonly ?array $bootstrap = null,
+        /** Local development server port. When set, uses http://localhost:{port}/api/v1 */
+        public readonly ?int $localPort = null
     ) {
     }
 
@@ -98,6 +100,7 @@ class FlagKitOptionsBuilder
     private int $circuitBreakerResetTimeout = FlagKitOptions::DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT;
     /** @var array<string, mixed>|null */
     private ?array $bootstrap = null;
+    private ?int $localPort = null;
 
     public function __construct(
         private readonly string $apiKey
@@ -179,6 +182,12 @@ class FlagKitOptionsBuilder
         return $this;
     }
 
+    public function localPort(int $port): self
+    {
+        $this->localPort = $port;
+        return $this;
+    }
+
     public function build(): FlagKitOptions
     {
         return new FlagKitOptions(
@@ -194,7 +203,8 @@ class FlagKitOptionsBuilder
             retryAttempts: $this->retryAttempts,
             circuitBreakerThreshold: $this->circuitBreakerThreshold,
             circuitBreakerResetTimeout: $this->circuitBreakerResetTimeout,
-            bootstrap: $this->bootstrap
+            bootstrap: $this->bootstrap,
+            localPort: $this->localPort
         );
     }
 }
