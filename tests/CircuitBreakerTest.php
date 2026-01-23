@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace FlagKit\Tests;
 
-use FlagKit\CircuitBreaker;
-use FlagKit\CircuitState;
-use FlagKit\FlagKitException;
-use FlagKit\ErrorCode;
+use FlagKit\Http\CircuitBreaker;
+use FlagKit\Http\CircuitState;
+use FlagKit\Error\FlagKitException;
+use FlagKit\Error\ErrorCode;
 use PHPUnit\Framework\TestCase;
 
 class CircuitBreakerTest extends TestCase

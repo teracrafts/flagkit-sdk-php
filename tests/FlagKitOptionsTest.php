@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace FlagKit\Tests;
 
 use FlagKit\FlagKitOptions;
-use FlagKit\FlagKitException;
-use FlagKit\ErrorCode;
+use FlagKit\Error\FlagKitException;
+use FlagKit\Error\ErrorCode;
 use PHPUnit\Framework\TestCase;
 
 class FlagKitOptionsTest extends TestCase

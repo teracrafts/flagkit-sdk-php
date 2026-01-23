@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace FlagKit;
 
+use FlagKit\Error\ErrorCode;
+use FlagKit\Error\FlagKitException;
+
 class FlagKitOptions
 {
     public const DEFAULT_BASE_URL = 'https://api.flagkit.dev/api/v1';

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace FlagKit\Tests;
 
-use FlagKit\EvaluationContext;
+use FlagKit\Types\EvaluationContext;
 use PHPUnit\Framework\TestCase;
 
 class EvaluationContextTest extends TestCase

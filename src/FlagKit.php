@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace FlagKit;
 
+use FlagKit\Error\FlagKitException;
+use FlagKit\Types\EvaluationContext;
+use FlagKit\Types\EvaluationResult;
+use FlagKit\Types\FlagState;
+
 /**
  * Static factory for FlagKit SDK with singleton pattern.
  */

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace FlagKit\Tests;
 
-use FlagKit\Cache;
-use FlagKit\FlagCache;
-use FlagKit\FlagState;
-use FlagKit\FlagValue;
+use FlagKit\Core\Cache;
+use FlagKit\Core\FlagCache;
+use FlagKit\Types\FlagState;
+use FlagKit\Types\FlagValue;
 use PHPUnit\Framework\TestCase;
 
 class CacheTest extends TestCase

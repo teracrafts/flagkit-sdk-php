@@ -4,6 +4,16 @@ declare(strict_types=1);
 
 namespace FlagKit;
 
+use FlagKit\Core\AnalyticsEvent;
+use FlagKit\Core\EventQueue;
+use FlagKit\Core\FlagCache;
+use FlagKit\Http\HttpClient;
+use FlagKit\Types\EvaluationContext;
+use FlagKit\Types\EvaluationReason;
+use FlagKit\Types\EvaluationResult;
+use FlagKit\Types\FlagState;
+use FlagKit\Types\FlagValue;
+
 class FlagKitClient
 {
     private HttpClient $httpClient;
