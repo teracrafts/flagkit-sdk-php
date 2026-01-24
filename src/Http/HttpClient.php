@@ -38,7 +38,6 @@ class HttpClient
             'base_uri' => self::getBaseUrl($options->localPort),
             'timeout' => $options->timeout,
             'headers' => [
-                'Authorization' => 'Bearer ' . $options->apiKey,
                 'X-API-Key' => $options->apiKey,
                 'User-Agent' => 'FlagKit-PHP/1.0.0',
                 'Content-Type' => 'application/json',
