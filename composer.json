@@ -23,7 +23,10 @@
     "autoload": {
         "psr-4": {
             "FlagKit\\": "src/"
-        }
+        },
+        "classmap": [
+            "src/"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

@@ -12,12 +12,14 @@ use FlagKit\Core\PollingConfig;
 use FlagKit\Core\PollingManager;
 use FlagKit\Error\ErrorCode;
 use FlagKit\Error\FlagKitException;
+use FlagKit\Error\SecurityException;
 use FlagKit\Http\HttpClient;
 use FlagKit\Types\EvaluationContext;
 use FlagKit\Types\EvaluationReason;
 use FlagKit\Types\EvaluationResult;
 use FlagKit\Types\FlagState;
 use FlagKit\Types\FlagValue;
+use FlagKit\Utils\Security;
 
 /**
  * FlagKit client for feature flag evaluation.
@@ -212,19 +214,49 @@ class FlagKitClient
      * Identify a user.
      *
      * @param array<string, mixed>|null $attributes Additional user attributes
+     * @throws SecurityException If strictPIIMode is enabled and PII is detected without privateAttributes
      */
     public function identify(string $userId, ?array $attributes = null): void
     {
+        // Security: check for potential PII in attributes
+        if ($attributes !== null && !isset($attributes['privateAttributes'])) {
+            $this->enforcePIIPolicy($attributes, 'identify attributes');
+        }
+
         $this->contextManager->identify($userId, $attributes);
         $this->eventQueue?->trackIdentify($userId, $attributes);
     }
 
     /**
      * Set the global evaluation context.
+     *
+     * @throws SecurityException If strictPIIMode is enabled and PII is detected without privateAttributes
      */
     public function setContext(EvaluationContext $context): void
     {
+        // Security: check for potential PII in context attributes
+        $contextArray = $context->toArray();
+        $hasPrivateAttributes = isset($contextArray['attributes']['privateAttributes'])
+            || $this->hasPrivateAttributePrefix($context);
+
+        if (!$hasPrivateAttributes && isset($contextArray['attributes'])) {
+            $this->enforcePIIPolicy($contextArray['attributes'], 'context');
+        }
+
         $this->contextManager->setContext($context);
+    }
+
+    /**
+     * Check if context has any attributes with private prefix (_).
+     */
+    private function hasPrivateAttributePrefix(EvaluationContext $context): bool
+    {
+        foreach (array_keys($context->toArray()['attributes'] ?? []) as $key) {
+            if (str_starts_with($key, '_')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -517,9 +549,15 @@ class FlagKitClient
      * Track a custom event.
      *
      * @param array<string, mixed>|null $data Event data
+     * @throws SecurityException If strictPIIMode is enabled and PII is detected in event data
      */
     public function track(string $eventType, ?array $data = null): void
     {
+        // Security: check for potential PII in event data
+        if ($data !== null) {
+            $this->enforcePIIPolicy($data, 'event');
+        }
+
         $this->eventQueue?->trackCustom($eventType, $data);
     }
 
@@ -711,5 +749,29 @@ class FlagKitClient
     private function generateSessionId(): string
     {
         return bin2hex(random_bytes(16));
+    }
+
+    /**
+     * Enforce PII policy based on strictPIIMode option.
+     *
+     * When strictPIIMode is enabled, throws SecurityException if PII is detected.
+     * When strictPIIMode is disabled, logs a warning.
+     *
+     * @param array<string, mixed> $data Data to check for PII
+     * @param string $dataType Type of data for error messages (e.g., 'context', 'event', 'identify attributes')
+     * @throws SecurityException If strictPIIMode is enabled and PII is detected
+     */
+    private function enforcePIIPolicy(array $data, string $dataType): void
+    {
+        $piiResult = Security::checkForPotentialPII($data, $dataType);
+
+        if ($piiResult->hasPII) {
+            if ($this->options->strictPIIMode) {
+                throw SecurityException::piiDetected(implode(', ', $piiResult->fields));
+            } else {
+                // Log warning when not in strict mode
+                error_log($piiResult->message);
+            }
+        }
     }
 }
