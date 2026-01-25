@@ -6,6 +6,8 @@ namespace FlagKit;
 
 use FlagKit\Error\ErrorCode;
 use FlagKit\Error\FlagKitException;
+use FlagKit\Error\SecurityException;
+use FlagKit\Utils\Security;
 
 class FlagKitOptions
 {
@@ -18,6 +20,7 @@ class FlagKitOptions
     public const DEFAULT_RETRY_ATTEMPTS = 3;
     public const DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 5;
     public const DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT = 30;
+    public const DEFAULT_KEY_ROTATION_GRACE_PERIOD = 300;
 
     public function __construct(
         public readonly string $apiKey,
@@ -35,7 +38,17 @@ class FlagKitOptions
         /** @var array<string, mixed>|null */
         public readonly ?array $bootstrap = null,
         /** Local development server port. When set, uses http://localhost:{port}/api/v1 */
-        public readonly ?int $localPort = null
+        public readonly ?int $localPort = null,
+        /** Secondary API key for key rotation support. On 401 errors, SDK will automatically retry with this key. */
+        public readonly ?string $secondaryApiKey = null,
+        /** Grace period in seconds during key rotation. Default: 300 (5 minutes) */
+        public readonly int $keyRotationGracePeriod = self::DEFAULT_KEY_ROTATION_GRACE_PERIOD,
+        /** Strict PII mode - throws SecurityException instead of warning when PII detected without privateAttributes */
+        public readonly bool $strictPIIMode = false,
+        /** Enable request signing for POST requests. Default: true */
+        public readonly bool $enableRequestSigning = true,
+        /** Enable cache encryption. Default: false */
+        public readonly bool $enableCacheEncryption = false
     ) {
     }
 
@@ -64,6 +77,29 @@ class FlagKitOptions
             );
         }
 
+        // Validate secondary API key format if provided
+        if ($this->secondaryApiKey !== null) {
+            $hasValidSecondaryPrefix = false;
+            foreach ($validPrefixes as $prefix) {
+                if (str_starts_with($this->secondaryApiKey, $prefix)) {
+                    $hasValidSecondaryPrefix = true;
+                    break;
+                }
+            }
+
+            if (!$hasValidSecondaryPrefix) {
+                throw FlagKitException::configError(
+                    ErrorCode::ConfigInvalidApiKey,
+                    'Invalid secondary API key format'
+                );
+            }
+        }
+
+        // CRITICAL: Prevent localPort from being used in production
+        if ($this->localPort !== null && Security::isProductionEnvironment()) {
+            throw SecurityException::localPortInProduction();
+        }
+
         if ($this->pollingInterval <= 0) {
             throw FlagKitException::configError(
                 ErrorCode::ConfigInvalidPollingInterval,
@@ -75,6 +111,13 @@ class FlagKitOptions
             throw FlagKitException::configError(
                 ErrorCode::ConfigInvalidCacheTtl,
                 'Cache TTL must be positive'
+            );
+        }
+
+        if ($this->keyRotationGracePeriod < 0) {
+            throw FlagKitException::configError(
+                ErrorCode::ConfigInvalidInterval,
+                'Key rotation grace period must be non-negative'
             );
         }
     }
@@ -101,6 +144,11 @@ class FlagKitOptionsBuilder
     /** @var array<string, mixed>|null */
     private ?array $bootstrap = null;
     private ?int $localPort = null;
+    private ?string $secondaryApiKey = null;
+    private int $keyRotationGracePeriod = FlagKitOptions::DEFAULT_KEY_ROTATION_GRACE_PERIOD;
+    private bool $strictPIIMode = false;
+    private bool $enableRequestSigning = true;
+    private bool $enableCacheEncryption = false;
 
     public function __construct(
         private readonly string $apiKey
@@ -188,6 +236,36 @@ class FlagKitOptionsBuilder
         return $this;
     }
 
+    public function secondaryApiKey(string $key): self
+    {
+        $this->secondaryApiKey = $key;
+        return $this;
+    }
+
+    public function keyRotationGracePeriod(int $seconds): self
+    {
+        $this->keyRotationGracePeriod = $seconds;
+        return $this;
+    }
+
+    public function strictPIIMode(bool $enabled): self
+    {
+        $this->strictPIIMode = $enabled;
+        return $this;
+    }
+
+    public function enableRequestSigning(bool $enabled): self
+    {
+        $this->enableRequestSigning = $enabled;
+        return $this;
+    }
+
+    public function enableCacheEncryption(bool $enabled): self
+    {
+        $this->enableCacheEncryption = $enabled;
+        return $this;
+    }
+
     public function build(): FlagKitOptions
     {
         return new FlagKitOptions(
@@ -204,7 +282,12 @@ class FlagKitOptionsBuilder
             circuitBreakerThreshold: $this->circuitBreakerThreshold,
             circuitBreakerResetTimeout: $this->circuitBreakerResetTimeout,
             bootstrap: $this->bootstrap,
-            localPort: $this->localPort
+            localPort: $this->localPort,
+            secondaryApiKey: $this->secondaryApiKey,
+            keyRotationGracePeriod: $this->keyRotationGracePeriod,
+            strictPIIMode: $this->strictPIIMode,
+            enableRequestSigning: $this->enableRequestSigning,
+            enableCacheEncryption: $this->enableCacheEncryption
         );
     }
 }

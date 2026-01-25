@@ -107,4 +107,21 @@ class FlagKitException extends Exception
     {
         return new self(ErrorCode::SdkAlreadyInitialized, 'SDK already initialized.');
     }
+
+    public static function securityError(ErrorCode $code, string $message): self
+    {
+        return new self($code, $message);
+    }
+
+    public function isSecurityError(): bool
+    {
+        return in_array($this->errorCode, [
+            ErrorCode::SecurityError,
+            ErrorCode::SecurityPIIDetected,
+            ErrorCode::SecurityLocalPortInProduction,
+            ErrorCode::SecurityKeyRotationFailed,
+            ErrorCode::SecurityEncryptionFailed,
+            ErrorCode::SecurityDecryptionFailed,
+        ], true);
+    }
 }

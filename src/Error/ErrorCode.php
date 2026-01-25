@@ -74,6 +74,14 @@ enum ErrorCode: string
     case SdkAlreadyInitialized = 'SDK_ALREADY_INITIALIZED';
     case SdkNotReady = 'SDK_NOT_READY';
 
+    // Security errors
+    case SecurityError = 'SECURITY_ERROR';
+    case SecurityPIIDetected = 'SECURITY_PII_DETECTED';
+    case SecurityLocalPortInProduction = 'SECURITY_LOCAL_PORT_IN_PRODUCTION';
+    case SecurityKeyRotationFailed = 'SECURITY_KEY_ROTATION_FAILED';
+    case SecurityEncryptionFailed = 'SECURITY_ENCRYPTION_FAILED';
+    case SecurityDecryptionFailed = 'SECURITY_DECRYPTION_FAILED';
+
     // Configuration errors
     case ConfigInvalidUrl = 'CONFIG_INVALID_URL';
     case ConfigInvalidInterval = 'CONFIG_INVALID_INTERVAL';

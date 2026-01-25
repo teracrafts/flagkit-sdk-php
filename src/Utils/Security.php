@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FlagKit\Utils;
 
+use FlagKit\Error\ErrorCode;
+use FlagKit\Error\SecurityException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -38,6 +40,69 @@ class SecurityConfig
     public static function production(): self
     {
         return new self(warnOnPotentialPII: false);
+    }
+}
+
+/**
+ * PII detection result
+ */
+class PIIDetectionResult
+{
+    /**
+     * @param bool $hasPII Whether PII was detected
+     * @param string[] $fields List of fields containing potential PII
+     * @param string $message Warning message
+     */
+    public function __construct(
+        public readonly bool $hasPII,
+        public readonly array $fields,
+        public readonly string $message
+    ) {
+    }
+
+    /**
+     * Create result indicating no PII was found
+     */
+    public static function noPII(): self
+    {
+        return new self(false, [], '');
+    }
+}
+
+/**
+ * Signed payload structure for requests
+ *
+ * @template T
+ */
+class SignedPayload
+{
+    /**
+     * @param T $data The payload data
+     * @param string $signature HMAC-SHA256 signature
+     * @param int $timestamp Unix timestamp in milliseconds
+     * @param string $keyId First 8 characters of the API key
+     */
+    public function __construct(
+        public readonly mixed $data,
+        public readonly string $signature,
+        public readonly int $timestamp,
+        public readonly string $keyId
+    ) {
+    }
+
+    /**
+     * Convert to array for JSON serialization
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'data' => $this->data,
+            'signature' => $this->signature,
+            'timestamp' => $this->timestamp,
+            'keyId' => $this->keyId,
+        ];
     }
 }
 
@@ -276,5 +341,272 @@ class Security
         }
 
         return array_keys($array) !== range(0, count($array) - 1);
+    }
+
+    /**
+     * Check for potential PII and return detailed result
+     *
+     * @param array<string, mixed>|null $data
+     */
+    public static function checkForPotentialPII(?array $data, string $dataType): PIIDetectionResult
+    {
+        if ($data === null) {
+            return PIIDetectionResult::noPII();
+        }
+
+        $piiFields = self::detectPotentialPII($data);
+
+        if (count($piiFields) === 0) {
+            return PIIDetectionResult::noPII();
+        }
+
+        $fieldsStr = implode(', ', $piiFields);
+        $advice = $dataType === 'context'
+            ? 'Consider adding these to privateAttributes.'
+            : 'Consider removing sensitive data from events.';
+
+        $message = "[FlagKit Security] Potential PII detected in {$dataType} data: {$fieldsStr}. {$advice}";
+
+        return new PIIDetectionResult(true, $piiFields, $message);
+    }
+
+    /**
+     * Check if environment is production
+     */
+    public static function isProductionEnvironment(): bool
+    {
+        $appEnv = getenv('APP_ENV') ?: ($_SERVER['APP_ENV'] ?? null);
+        return $appEnv === 'production';
+    }
+
+    /**
+     * Get the first 8 characters of an API key for identification
+     * This is safe to expose as it doesn't reveal the full key
+     */
+    public static function getKeyId(string $apiKey): string
+    {
+        return substr($apiKey, 0, 8);
+    }
+
+    /**
+     * Generate HMAC-SHA256 signature
+     */
+    public static function generateHMACSHA256(string $message, string $key): string
+    {
+        return hash_hmac('sha256', $message, $key);
+    }
+
+    /**
+     * Sign a payload with HMAC-SHA256
+     *
+     * @template T
+     * @param T $data
+     * @return SignedPayload<T>
+     */
+    public static function signPayload(mixed $data, string $apiKey, ?int $timestamp = null): SignedPayload
+    {
+        $ts = $timestamp ?? (int) (microtime(true) * 1000);
+        $payload = json_encode($data, JSON_THROW_ON_ERROR);
+        $message = "{$ts}.{$payload}";
+        $signature = self::generateHMACSHA256($message, $apiKey);
+
+        return new SignedPayload(
+            data: $data,
+            signature: $signature,
+            timestamp: $ts,
+            keyId: self::getKeyId($apiKey)
+        );
+    }
+
+    /**
+     * Create signature for request headers
+     *
+     * @return array{signature: string, timestamp: int}
+     */
+    public static function createRequestSignature(string $body, string $apiKey, ?int $timestamp = null): array
+    {
+        $ts = $timestamp ?? (int) (microtime(true) * 1000);
+        $message = "{$ts}.{$body}";
+        $signature = self::generateHMACSHA256($message, $apiKey);
+
+        return [
+            'signature' => $signature,
+            'timestamp' => $ts,
+        ];
+    }
+
+    /**
+     * Verify a signed payload
+     *
+     * @param SignedPayload<mixed> $signedPayload
+     * @param int $maxAgeMs Maximum age in milliseconds (default: 5 minutes)
+     */
+    public static function verifySignedPayload(
+        SignedPayload $signedPayload,
+        string $apiKey,
+        int $maxAgeMs = 300000
+    ): bool {
+        // Check timestamp age
+        $now = (int) (microtime(true) * 1000);
+        $age = $now - $signedPayload->timestamp;
+        if ($age > $maxAgeMs || $age < 0) {
+            return false;
+        }
+
+        // Verify key ID matches
+        if ($signedPayload->keyId !== self::getKeyId($apiKey)) {
+            return false;
+        }
+
+        // Verify signature
+        $payload = json_encode($signedPayload->data, JSON_THROW_ON_ERROR);
+        $message = "{$signedPayload->timestamp}.{$payload}";
+        $expectedSignature = self::generateHMACSHA256($message, $apiKey);
+
+        return hash_equals($expectedSignature, $signedPayload->signature);
+    }
+}
+
+/**
+ * Encrypted storage for cache data using AES-256-GCM
+ */
+class EncryptedStorage
+{
+    private const CIPHER = 'aes-256-gcm';
+    private const KEY_ITERATIONS = 10000;
+    private const KEY_LENGTH = 32;
+    private const SALT_LENGTH = 16;
+    private const IV_LENGTH = 12;
+    private const TAG_LENGTH = 16;
+
+    private string $encryptionKey;
+
+    /**
+     * @param string $apiKey API key used to derive encryption key
+     * @param string|null $salt Optional salt for key derivation (random if not provided)
+     */
+    public function __construct(string $apiKey, ?string $salt = null)
+    {
+        $this->encryptionKey = $this->deriveKey($apiKey, $salt);
+    }
+
+    /**
+     * Derive encryption key from API key using PBKDF2
+     */
+    private function deriveKey(string $apiKey, ?string $salt = null): string
+    {
+        $salt = $salt ?? random_bytes(self::SALT_LENGTH);
+
+        return hash_pbkdf2(
+            'sha256',
+            $apiKey,
+            $salt,
+            self::KEY_ITERATIONS,
+            self::KEY_LENGTH,
+            true
+        );
+    }
+
+    /**
+     * Encrypt data using AES-256-GCM
+     *
+     * @param mixed $data Data to encrypt
+     * @return string Base64-encoded encrypted data with IV and tag
+     * @throws SecurityException If encryption fails
+     */
+    public function encrypt(mixed $data): string
+    {
+        $json = json_encode($data, JSON_THROW_ON_ERROR);
+        $iv = random_bytes(self::IV_LENGTH);
+        $tag = '';
+
+        $ciphertext = openssl_encrypt(
+            $json,
+            self::CIPHER,
+            $this->encryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            '',
+            self::TAG_LENGTH
+        );
+
+        if ($ciphertext === false) {
+            throw SecurityException::encryptionFailed('openssl_encrypt failed');
+        }
+
+        // Combine IV + tag + ciphertext
+        $combined = $iv . $tag . $ciphertext;
+
+        return base64_encode($combined);
+    }
+
+    /**
+     * Decrypt data encrypted with AES-256-GCM
+     *
+     * @param string $encryptedData Base64-encoded encrypted data
+     * @return mixed Decrypted data
+     * @throws SecurityException If decryption fails
+     */
+    public function decrypt(string $encryptedData): mixed
+    {
+        $combined = base64_decode($encryptedData, true);
+        if ($combined === false) {
+            throw SecurityException::decryptionFailed('Invalid base64 encoding');
+        }
+
+        $minLength = self::IV_LENGTH + self::TAG_LENGTH + 1;
+        if (strlen($combined) < $minLength) {
+            throw SecurityException::decryptionFailed('Invalid encrypted data length');
+        }
+
+        // Extract IV, tag, and ciphertext
+        $iv = substr($combined, 0, self::IV_LENGTH);
+        $tag = substr($combined, self::IV_LENGTH, self::TAG_LENGTH);
+        $ciphertext = substr($combined, self::IV_LENGTH + self::TAG_LENGTH);
+
+        $json = openssl_decrypt(
+            $ciphertext,
+            self::CIPHER,
+            $this->encryptionKey,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag
+        );
+
+        if ($json === false) {
+            throw SecurityException::decryptionFailed('openssl_decrypt failed - possible tampering or wrong key');
+        }
+
+        return json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Create a new EncryptedStorage with a random salt
+     *
+     * @return array{storage: self, salt: string}
+     */
+    public static function createWithRandomSalt(string $apiKey): array
+    {
+        $salt = random_bytes(self::SALT_LENGTH);
+        $storage = new self($apiKey, $salt);
+
+        return [
+            'storage' => $storage,
+            'salt' => base64_encode($salt),
+        ];
+    }
+
+    /**
+     * Create an EncryptedStorage from saved salt
+     */
+    public static function fromSalt(string $apiKey, string $base64Salt): self
+    {
+        $salt = base64_decode($base64Salt, true);
+        if ($salt === false) {
+            throw SecurityException::decryptionFailed('Invalid salt encoding');
+        }
+
+        return new self($apiKey, $salt);
     }
 }

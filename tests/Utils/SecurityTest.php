@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace FlagKit\Tests\Utils;
 
+use FlagKit\Error\SecurityException;
+use FlagKit\Utils\EncryptedStorage;
+use FlagKit\Utils\PIIDetectionResult;
 use FlagKit\Utils\Security;
 use FlagKit\Utils\SecurityConfig;
+use FlagKit\Utils\SignedPayload;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -528,5 +532,384 @@ class SecurityTest extends TestCase
         $this->assertNotContains('pattern1', $patterns);
         $this->assertContains('pattern2', $patterns);
         $this->assertContains('pattern3', $patterns);
+    }
+
+    // ==================== checkForPotentialPII ====================
+
+    public function testCheckForPotentialPIIReturnsNoPIIForSafeData(): void
+    {
+        $data = [
+            'userId' => 'user-123',
+            'plan' => 'premium',
+        ];
+
+        $result = Security::checkForPotentialPII($data, 'context');
+
+        $this->assertFalse($result->hasPII);
+        $this->assertEmpty($result->fields);
+        $this->assertEmpty($result->message);
+    }
+
+    public function testCheckForPotentialPIIDetectsPII(): void
+    {
+        $data = [
+            'email' => 'user@example.com',
+            'phone' => '123-456-7890',
+        ];
+
+        $result = Security::checkForPotentialPII($data, 'context');
+
+        $this->assertTrue($result->hasPII);
+        $this->assertContains('email', $result->fields);
+        $this->assertContains('phone', $result->fields);
+        $this->assertStringContainsString('privateAttributes', $result->message);
+    }
+
+    public function testCheckForPotentialPIIReturnsNoPIIForNull(): void
+    {
+        $result = Security::checkForPotentialPII(null, 'context');
+
+        $this->assertFalse($result->hasPII);
+        $this->assertEmpty($result->fields);
+    }
+
+    public function testPIIDetectionResultNoPIIFactory(): void
+    {
+        $result = PIIDetectionResult::noPII();
+
+        $this->assertFalse($result->hasPII);
+        $this->assertEmpty($result->fields);
+        $this->assertEmpty($result->message);
+    }
+
+    // ==================== isProductionEnvironment ====================
+
+    public function testIsProductionEnvironmentReturnsFalseByDefault(): void
+    {
+        // Clear APP_ENV if set
+        $originalEnv = getenv('APP_ENV');
+        putenv('APP_ENV');
+
+        $result = Security::isProductionEnvironment();
+
+        // Restore original
+        if ($originalEnv !== false) {
+            putenv("APP_ENV={$originalEnv}");
+        }
+
+        $this->assertFalse($result);
+    }
+
+    public function testIsProductionEnvironmentReturnsTrueForProduction(): void
+    {
+        $originalEnv = getenv('APP_ENV');
+        putenv('APP_ENV=production');
+
+        $result = Security::isProductionEnvironment();
+
+        // Restore original
+        if ($originalEnv !== false) {
+            putenv("APP_ENV={$originalEnv}");
+        } else {
+            putenv('APP_ENV');
+        }
+
+        $this->assertTrue($result);
+    }
+
+    // ==================== getKeyId ====================
+
+    public function testGetKeyIdReturnsFirst8Characters(): void
+    {
+        $keyId = Security::getKeyId('sdk_abcdefghijklmnop');
+
+        $this->assertEquals('sdk_abcd', $keyId);
+    }
+
+    public function testGetKeyIdHandlesShortKeys(): void
+    {
+        $keyId = Security::getKeyId('sdk_ab');
+
+        $this->assertEquals('sdk_ab', $keyId);
+    }
+
+    // ==================== HMAC-SHA256 Signing ====================
+
+    public function testGenerateHMACSHA256ProducesConsistentSignature(): void
+    {
+        $message = 'test message';
+        $key = 'secret_key';
+
+        $sig1 = Security::generateHMACSHA256($message, $key);
+        $sig2 = Security::generateHMACSHA256($message, $key);
+
+        $this->assertEquals($sig1, $sig2);
+        $this->assertEquals(64, strlen($sig1)); // SHA256 hex is 64 chars
+    }
+
+    public function testGenerateHMACSHA256ProducesDifferentSignaturesForDifferentMessages(): void
+    {
+        $key = 'secret_key';
+
+        $sig1 = Security::generateHMACSHA256('message1', $key);
+        $sig2 = Security::generateHMACSHA256('message2', $key);
+
+        $this->assertNotEquals($sig1, $sig2);
+    }
+
+    public function testSignPayloadCreatesValidSignedPayload(): void
+    {
+        $data = ['key' => 'value', 'number' => 42];
+        $apiKey = 'sdk_test_key_12345';
+
+        $signedPayload = Security::signPayload($data, $apiKey);
+
+        $this->assertEquals($data, $signedPayload->data);
+        $this->assertNotEmpty($signedPayload->signature);
+        $this->assertEquals('sdk_test', $signedPayload->keyId);
+        $this->assertGreaterThan(0, $signedPayload->timestamp);
+    }
+
+    public function testSignPayloadUsesCustomTimestamp(): void
+    {
+        $data = ['test' => true];
+        $apiKey = 'sdk_test_key';
+        $customTimestamp = 1234567890000;
+
+        $signedPayload = Security::signPayload($data, $apiKey, $customTimestamp);
+
+        $this->assertEquals($customTimestamp, $signedPayload->timestamp);
+    }
+
+    public function testSignedPayloadToArray(): void
+    {
+        $signedPayload = new SignedPayload(
+            data: ['test' => true],
+            signature: 'abc123',
+            timestamp: 1234567890,
+            keyId: 'sdk_test'
+        );
+
+        $array = $signedPayload->toArray();
+
+        $this->assertEquals(['test' => true], $array['data']);
+        $this->assertEquals('abc123', $array['signature']);
+        $this->assertEquals(1234567890, $array['timestamp']);
+        $this->assertEquals('sdk_test', $array['keyId']);
+    }
+
+    // ==================== Request Signature ====================
+
+    public function testCreateRequestSignatureReturnsSignatureAndTimestamp(): void
+    {
+        $body = '{"key": "value"}';
+        $apiKey = 'sdk_test_key';
+
+        $result = Security::createRequestSignature($body, $apiKey);
+
+        $this->assertArrayHasKey('signature', $result);
+        $this->assertArrayHasKey('timestamp', $result);
+        $this->assertEquals(64, strlen($result['signature']));
+        $this->assertGreaterThan(0, $result['timestamp']);
+    }
+
+    public function testCreateRequestSignatureWithCustomTimestamp(): void
+    {
+        $body = '{}';
+        $apiKey = 'sdk_test';
+        $timestamp = 1000000000000;
+
+        $result = Security::createRequestSignature($body, $apiKey, $timestamp);
+
+        $this->assertEquals($timestamp, $result['timestamp']);
+    }
+
+    // ==================== Verify Signed Payload ====================
+
+    public function testVerifySignedPayloadReturnsTrueForValidPayload(): void
+    {
+        $data = ['key' => 'value'];
+        $apiKey = 'sdk_test_key_12345';
+
+        $signedPayload = Security::signPayload($data, $apiKey);
+        $isValid = Security::verifySignedPayload($signedPayload, $apiKey);
+
+        $this->assertTrue($isValid);
+    }
+
+    public function testVerifySignedPayloadReturnsFalseForWrongKey(): void
+    {
+        $data = ['key' => 'value'];
+        $apiKey = 'sdk_test_key_12345';
+        $wrongKey = 'sdk_wrong_key_67890';
+
+        $signedPayload = Security::signPayload($data, $apiKey);
+        $isValid = Security::verifySignedPayload($signedPayload, $wrongKey);
+
+        $this->assertFalse($isValid);
+    }
+
+    public function testVerifySignedPayloadReturnsFalseForExpiredPayload(): void
+    {
+        $data = ['key' => 'value'];
+        $apiKey = 'sdk_test_key';
+        $oldTimestamp = (int) ((microtime(true) - 600) * 1000); // 10 minutes ago
+
+        $signedPayload = Security::signPayload($data, $apiKey, $oldTimestamp);
+        $isValid = Security::verifySignedPayload($signedPayload, $apiKey, 300000); // 5 min max age
+
+        $this->assertFalse($isValid);
+    }
+
+    public function testVerifySignedPayloadReturnsFalseForTamperedData(): void
+    {
+        $data = ['key' => 'value'];
+        $apiKey = 'sdk_test_key';
+
+        $signedPayload = Security::signPayload($data, $apiKey);
+
+        // Create tampered payload
+        $tamperedPayload = new SignedPayload(
+            data: ['key' => 'tampered'],
+            signature: $signedPayload->signature,
+            timestamp: $signedPayload->timestamp,
+            keyId: $signedPayload->keyId
+        );
+
+        $isValid = Security::verifySignedPayload($tamperedPayload, $apiKey);
+
+        $this->assertFalse($isValid);
+    }
+
+    // ==================== Encrypted Storage ====================
+
+    public function testEncryptedStorageEncryptsAndDecrypts(): void
+    {
+        $apiKey = 'sdk_test_key_for_encryption';
+        $storage = new EncryptedStorage($apiKey);
+
+        $originalData = ['flags' => ['feature1' => true, 'feature2' => 'value']];
+
+        $encrypted = $storage->encrypt($originalData);
+        $decrypted = $storage->decrypt($encrypted);
+
+        $this->assertEquals($originalData, $decrypted);
+    }
+
+    public function testEncryptedStorageProducesDifferentCiphertextEachTime(): void
+    {
+        $apiKey = 'sdk_test_key';
+        $storage = new EncryptedStorage($apiKey);
+
+        $data = ['test' => 'data'];
+
+        $encrypted1 = $storage->encrypt($data);
+        $encrypted2 = $storage->encrypt($data);
+
+        // Different IVs should produce different ciphertext
+        $this->assertNotEquals($encrypted1, $encrypted2);
+    }
+
+    public function testEncryptedStorageWithDifferentKeysCannotDecrypt(): void
+    {
+        $storage1 = new EncryptedStorage('sdk_key_one');
+        $storage2 = new EncryptedStorage('sdk_key_two');
+
+        $data = ['secret' => 'value'];
+        $encrypted = $storage1->encrypt($data);
+
+        $this->expectException(SecurityException::class);
+        $storage2->decrypt($encrypted);
+    }
+
+    public function testEncryptedStorageThrowsOnInvalidBase64(): void
+    {
+        $storage = new EncryptedStorage('sdk_test_key');
+
+        $this->expectException(SecurityException::class);
+        $storage->decrypt('not-valid-base64!!!');
+    }
+
+    public function testEncryptedStorageThrowsOnTruncatedData(): void
+    {
+        $storage = new EncryptedStorage('sdk_test_key');
+
+        // Valid base64 but too short
+        $this->expectException(SecurityException::class);
+        $storage->decrypt(base64_encode('short'));
+    }
+
+    public function testEncryptedStorageCreateWithRandomSalt(): void
+    {
+        $apiKey = 'sdk_test_key';
+
+        $result = EncryptedStorage::createWithRandomSalt($apiKey);
+
+        $this->assertArrayHasKey('storage', $result);
+        $this->assertArrayHasKey('salt', $result);
+        $this->assertInstanceOf(EncryptedStorage::class, $result['storage']);
+        $this->assertNotEmpty($result['salt']);
+    }
+
+    public function testEncryptedStorageFromSalt(): void
+    {
+        $apiKey = 'sdk_test_key';
+
+        // Create with random salt
+        $result = EncryptedStorage::createWithRandomSalt($apiKey);
+        $originalStorage = $result['storage'];
+        $salt = $result['salt'];
+
+        // Encrypt some data
+        $data = ['important' => 'data'];
+        $encrypted = $originalStorage->encrypt($data);
+
+        // Recreate storage from same salt
+        $recreatedStorage = EncryptedStorage::fromSalt($apiKey, $salt);
+        $decrypted = $recreatedStorage->decrypt($encrypted);
+
+        $this->assertEquals($data, $decrypted);
+    }
+
+    public function testEncryptedStorageFromSaltThrowsOnInvalidSalt(): void
+    {
+        $this->expectException(SecurityException::class);
+        EncryptedStorage::fromSalt('sdk_key', 'not-valid-base64!!!');
+    }
+
+    public function testEncryptedStorageHandlesLargeData(): void
+    {
+        $storage = new EncryptedStorage('sdk_test_key');
+
+        // Create large data array
+        $largeData = [];
+        for ($i = 0; $i < 1000; $i++) {
+            $largeData["flag_{$i}"] = [
+                'enabled' => $i % 2 === 0,
+                'value' => str_repeat('x', 100),
+                'version' => $i,
+            ];
+        }
+
+        $encrypted = $storage->encrypt($largeData);
+        $decrypted = $storage->decrypt($encrypted);
+
+        $this->assertEquals($largeData, $decrypted);
+    }
+
+    public function testEncryptedStorageHandlesSpecialCharacters(): void
+    {
+        $storage = new EncryptedStorage('sdk_test_key');
+
+        $data = [
+            'unicode' => 'Hello \u4e16\u754c',
+            'special' => "quotes: \" ' \\ / \n\t\r",
+            'emoji' => '123',
+        ];
+
+        $encrypted = $storage->encrypt($data);
+        $decrypted = $storage->decrypt($encrypted);
+
+        $this->assertEquals($data, $decrypted);
     }
 }

@@ -7,18 +7,24 @@ namespace FlagKit\Http;
 use FlagKit\Error\ErrorCode;
 use FlagKit\Error\FlagKitException;
 use FlagKit\FlagKitOptions;
+use FlagKit\Utils\Security;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\Exception\RequestException;
+use Psr\Log\LoggerInterface;
 
 class HttpClient
 {
     private const BASE_URL = 'https://api.flagkit.dev/api/v1';
+    private const SDK_VERSION = '1.0.0';
 
     private Client $client;
     private CircuitBreaker $circuitBreaker;
+    private string $currentApiKey;
+    private ?int $keyRotationTimestamp = null;
+    private ?LoggerInterface $logger = null;
 
     /**
      * Returns the base URL for the given local port, or the default production URL.
@@ -32,17 +38,15 @@ class HttpClient
     }
 
     public function __construct(
-        private readonly FlagKitOptions $options
+        private readonly FlagKitOptions $options,
+        ?LoggerInterface $logger = null
     ) {
+        $this->currentApiKey = $options->apiKey;
+        $this->logger = $logger;
+
         $this->client = new Client([
             'base_uri' => self::getBaseUrl($options->localPort),
             'timeout' => $options->timeout,
-            'headers' => [
-                'X-API-Key' => $options->apiKey,
-                'User-Agent' => 'FlagKit-PHP/1.0.0',
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ],
         ]);
 
         $this->circuitBreaker = new CircuitBreaker(
@@ -52,15 +56,87 @@ class HttpClient
     }
 
     /**
+     * Get the current active API key
+     */
+    public function getActiveApiKey(): string
+    {
+        return $this->currentApiKey;
+    }
+
+    /**
+     * Get the key identifier (first 8 chars) for the current key
+     */
+    public function getKeyId(): string
+    {
+        return Security::getKeyId($this->currentApiKey);
+    }
+
+    /**
+     * Check if key rotation is currently active
+     */
+    public function isInKeyRotation(): bool
+    {
+        if ($this->keyRotationTimestamp === null) {
+            return false;
+        }
+
+        $elapsed = time() - $this->keyRotationTimestamp;
+        return $elapsed < $this->options->keyRotationGracePeriod;
+    }
+
+    /**
+     * Rotate to secondary API key
+     *
+     * @return bool True if rotation was performed
+     */
+    private function rotateToSecondaryKey(): bool
+    {
+        if ($this->options->secondaryApiKey === null) {
+            return false;
+        }
+
+        if ($this->currentApiKey === $this->options->secondaryApiKey) {
+            // Already using secondary key
+            return false;
+        }
+
+        $this->logger?->info('Rotating to secondary API key due to authentication failure');
+        $this->currentApiKey = $this->options->secondaryApiKey;
+        $this->keyRotationTimestamp = time();
+        return true;
+    }
+
+    /**
+     * Build request headers
+     *
+     * @return array<string, string>
+     */
+    private function buildHeaders(): array
+    {
+        return [
+            'X-API-Key' => $this->currentApiKey,
+            'User-Agent' => 'FlagKit-PHP/' . self::SDK_VERSION,
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+            'X-FlagKit-SDK-Version' => self::SDK_VERSION,
+            'X-FlagKit-SDK-Language' => 'php',
+        ];
+    }
+
+    /**
      * @template T
      * @param class-string<T>|null $responseClass
      * @return T|array<string, mixed>
      */
     public function get(string $path, ?string $responseClass = null): mixed
     {
-        return $this->executeWithRetry(function () use ($path, $responseClass) {
-            $response = $this->client->get($path);
-            return $this->handleResponse($response->getBody()->getContents(), $responseClass);
+        return $this->executeWithKeyRotation(function () use ($path, $responseClass) {
+            return $this->executeWithRetry(function () use ($path, $responseClass) {
+                $response = $this->client->get($path, [
+                    'headers' => $this->buildHeaders(),
+                ]);
+                return $this->handleResponse($response->getBody()->getContents(), $responseClass);
+            });
         });
     }
 
@@ -72,12 +148,50 @@ class HttpClient
      */
     public function post(string $path, array $body, ?string $responseClass = null): mixed
     {
-        return $this->executeWithRetry(function () use ($path, $body, $responseClass) {
-            $response = $this->client->post($path, [
-                'json' => $body,
-            ]);
-            return $this->handleResponse($response->getBody()->getContents(), $responseClass);
+        return $this->executeWithKeyRotation(function () use ($path, $body, $responseClass) {
+            return $this->executeWithRetry(function () use ($path, $body, $responseClass) {
+                $headers = $this->buildHeaders();
+
+                // Add signing headers for POST requests if enabled
+                if ($this->options->enableRequestSigning) {
+                    $bodyJson = json_encode($body, JSON_THROW_ON_ERROR);
+                    $signingData = Security::createRequestSignature($bodyJson, $this->currentApiKey);
+                    $headers['X-Signature'] = $signingData['signature'];
+                    $headers['X-Timestamp'] = (string) $signingData['timestamp'];
+                    $headers['X-Key-Id'] = $this->getKeyId();
+                }
+
+                $response = $this->client->post($path, [
+                    'headers' => $headers,
+                    'json' => $body,
+                ]);
+                return $this->handleResponse($response->getBody()->getContents(), $responseClass);
+            });
         });
+    }
+
+    /**
+     * Execute with key rotation support
+     *
+     * @template T
+     * @param callable(): T $action
+     * @return T
+     */
+    private function executeWithKeyRotation(callable $action): mixed
+    {
+        try {
+            return $action();
+        } catch (FlagKitException $e) {
+            // Handle 401 errors with key rotation
+            if ($e->getErrorCode() === ErrorCode::HttpUnauthorized && $this->options->secondaryApiKey !== null) {
+                $rotated = $this->rotateToSecondaryKey();
+                if ($rotated) {
+                    $this->logger?->debug('Retrying request with secondary API key');
+                    return $action();
+                }
+            }
+            throw $e;
+        }
     }
 
     /**
