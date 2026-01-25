@@ -173,11 +173,18 @@ class AnalyticsEvent
  * - Automatic retry on failure
  * - Event sampling
  * - Graceful shutdown
+ * - Crash-resilient event persistence (optional)
  */
 class EventQueue
 {
     /** @var AnalyticsEvent[] */
     private array $queue = [];
+
+    /**
+     * Map of event ID to AnalyticsEvent for persistence tracking.
+     * @var array<string, AnalyticsEvent>
+     */
+    private array $eventIdMap = [];
 
     /** @var callable(AnalyticsEvent[]): void */
     private $onFlush;
@@ -191,17 +198,82 @@ class EventQueue
     private int $failedFlushCount = 0;
     private ?int $lastFlushAt = null;
 
+    private ?EventPersistence $persistence = null;
+
     public function __construct(
         int $batchSize = EventQueueConfig::DEFAULT_BATCH_SIZE,
         int $flushInterval = EventQueueConfig::DEFAULT_FLUSH_INTERVAL,
         ?callable $onFlush = null,
-        ?EventQueueConfig $config = null
+        ?EventQueueConfig $config = null,
+        ?EventPersistence $persistence = null
     ) {
         $this->config = $config ?? new EventQueueConfig(
             batchSize: $batchSize,
             flushInterval: $flushInterval
         );
         $this->onFlush = $onFlush ?? fn() => null;
+        $this->persistence = $persistence;
+
+        // Recover persisted events on initialization
+        if ($this->persistence !== null) {
+            $this->recoverPersistedEvents();
+        }
+    }
+
+    /**
+     * Set the event persistence handler.
+     */
+    public function setEventPersistence(EventPersistence $persistence): void
+    {
+        $this->persistence = $persistence;
+
+        // Recover any persisted events
+        $this->recoverPersistedEvents();
+    }
+
+    /**
+     * Get the event persistence handler.
+     */
+    public function getEventPersistence(): ?EventPersistence
+    {
+        return $this->persistence;
+    }
+
+    /**
+     * Recover persisted events on initialization.
+     */
+    private function recoverPersistedEvents(): void
+    {
+        if ($this->persistence === null) {
+            return;
+        }
+
+        $recoveredEvents = $this->persistence->recover();
+
+        foreach ($recoveredEvents as $persistedEvent) {
+            // Recreate AnalyticsEvent from persisted data
+            $eventType = EventType::tryFrom($persistedEvent->type);
+            if ($eventType === null) {
+                continue;
+            }
+
+            $event = new AnalyticsEvent(
+                eventType: $eventType,
+                timestamp: new \DateTimeImmutable('@' . (int)($persistedEvent->timestamp / 1000)),
+                flagKey: $persistedEvent->data['flagKey'] ?? null,
+                value: $persistedEvent->data['value'] ?? null,
+                context: $persistedEvent->data['context'] ?? null,
+                data: $persistedEvent->data['eventData'] ?? null,
+                sessionId: $persistedEvent->data['sessionId'] ?? null,
+                environmentId: $persistedEvent->data['environmentId'] ?? null,
+                sdkVersion: $persistedEvent->data['sdkVersion'] ?? null,
+                sdkLanguage: $persistedEvent->data['sdkLanguage'] ?? 'php'
+            );
+
+            // Add to queue with priority (at the beginning)
+            array_unshift($this->queue, $event);
+            $this->eventIdMap[$persistedEvent->id] = $event;
+        }
     }
 
     /**
@@ -283,9 +355,24 @@ class EventQueue
             return;
         }
 
+        // Persist event BEFORE queuing (crash-safe)
+        $eventId = null;
+        if ($this->persistence !== null) {
+            $persistedEvent = $this->persistence->persist($event);
+            $eventId = $persistedEvent->id;
+            $this->eventIdMap[$eventId] = $event;
+        }
+
         // Enforce max queue size - drop oldest if full
         if (count($this->queue) >= $this->config->maxQueueSize) {
-            array_shift($this->queue);
+            $droppedEvent = array_shift($this->queue);
+            // Remove from eventIdMap if persisted
+            if ($droppedEvent !== null) {
+                $droppedId = array_search($droppedEvent, $this->eventIdMap, true);
+                if ($droppedId !== false) {
+                    unset($this->eventIdMap[$droppedId]);
+                }
+            }
         }
 
         $this->queue[] = $event;
@@ -386,12 +473,41 @@ class EventQueue
         // Get events to send
         $events = array_splice($this->queue, 0, $this->config->batchSize);
 
+        // Get event IDs for the events being sent
+        $eventIds = [];
+        if ($this->persistence !== null) {
+            foreach ($events as $event) {
+                $eventId = array_search($event, $this->eventIdMap, true);
+                if ($eventId !== false) {
+                    $eventIds[] = $eventId;
+                }
+            }
+            // Mark events as sending
+            if (!empty($eventIds)) {
+                $this->persistence->markSending($eventIds);
+            }
+        }
+
         try {
             ($this->onFlush)($events);
             $this->failedFlushCount = 0;
             $this->lastFlushAt = time();
+
+            // Mark events as sent after successful flush
+            if ($this->persistence !== null && !empty($eventIds)) {
+                $this->persistence->markSent($eventIds);
+                // Remove from eventIdMap
+                foreach ($eventIds as $eventId) {
+                    unset($this->eventIdMap[$eventId]);
+                }
+            }
         } catch (\Throwable $e) {
             $this->failedFlushCount++;
+
+            // Mark events as pending again on failure
+            if ($this->persistence !== null && !empty($eventIds)) {
+                $this->persistence->markPending($eventIds);
+            }
 
             // Re-queue events on failure (up to max size)
             $requeue = array_slice($events, 0, $this->config->maxQueueSize - count($this->queue));
@@ -449,6 +565,12 @@ class EventQueue
     public function stop(): void
     {
         $this->flushAll();
+
+        // Cleanup persistence
+        if ($this->persistence !== null) {
+            $this->persistence->flush();
+            $this->persistence->cleanup();
+        }
     }
 
     /**
@@ -457,6 +579,10 @@ class EventQueue
     public function close(): void
     {
         $this->stop();
+
+        if ($this->persistence !== null) {
+            $this->persistence->close();
+        }
     }
 
     /**
