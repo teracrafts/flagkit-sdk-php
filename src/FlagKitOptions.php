@@ -21,6 +21,8 @@ class FlagKitOptions
     public const DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 5;
     public const DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT = 30;
     public const DEFAULT_KEY_ROTATION_GRACE_PERIOD = 300;
+    public const DEFAULT_MAX_PERSISTED_EVENTS = 10000;
+    public const DEFAULT_PERSISTENCE_FLUSH_INTERVAL = 1000;
 
     public function __construct(
         public readonly string $apiKey,
@@ -48,7 +50,15 @@ class FlagKitOptions
         /** Enable request signing for POST requests. Default: true */
         public readonly bool $enableRequestSigning = true,
         /** Enable cache encryption. Default: false */
-        public readonly bool $enableCacheEncryption = false
+        public readonly bool $enableCacheEncryption = false,
+        /** Enable crash-resilient event persistence. Default: false */
+        public readonly bool $persistEvents = false,
+        /** Directory path for event storage. Uses system temp dir if null */
+        public readonly ?string $eventStoragePath = null,
+        /** Maximum number of events to persist. Default: 10000 */
+        public readonly int $maxPersistedEvents = self::DEFAULT_MAX_PERSISTED_EVENTS,
+        /** Flush interval for event persistence in milliseconds. Default: 1000 */
+        public readonly int $persistenceFlushInterval = self::DEFAULT_PERSISTENCE_FLUSH_INTERVAL
     ) {
     }
 
@@ -120,6 +130,20 @@ class FlagKitOptions
                 'Key rotation grace period must be non-negative'
             );
         }
+
+        if ($this->maxPersistedEvents <= 0) {
+            throw FlagKitException::configError(
+                ErrorCode::ConfigInvalidInterval,
+                'Max persisted events must be positive'
+            );
+        }
+
+        if ($this->persistenceFlushInterval <= 0) {
+            throw FlagKitException::configError(
+                ErrorCode::ConfigInvalidInterval,
+                'Persistence flush interval must be positive'
+            );
+        }
     }
 
     public static function builder(string $apiKey): FlagKitOptionsBuilder
@@ -149,6 +173,10 @@ class FlagKitOptionsBuilder
     private bool $strictPIIMode = false;
     private bool $enableRequestSigning = true;
     private bool $enableCacheEncryption = false;
+    private bool $persistEvents = false;
+    private ?string $eventStoragePath = null;
+    private int $maxPersistedEvents = FlagKitOptions::DEFAULT_MAX_PERSISTED_EVENTS;
+    private int $persistenceFlushInterval = FlagKitOptions::DEFAULT_PERSISTENCE_FLUSH_INTERVAL;
 
     public function __construct(
         private readonly string $apiKey
@@ -266,6 +294,30 @@ class FlagKitOptionsBuilder
         return $this;
     }
 
+    public function persistEvents(bool $enabled): self
+    {
+        $this->persistEvents = $enabled;
+        return $this;
+    }
+
+    public function eventStoragePath(string $path): self
+    {
+        $this->eventStoragePath = $path;
+        return $this;
+    }
+
+    public function maxPersistedEvents(int $max): self
+    {
+        $this->maxPersistedEvents = $max;
+        return $this;
+    }
+
+    public function persistenceFlushInterval(int $milliseconds): self
+    {
+        $this->persistenceFlushInterval = $milliseconds;
+        return $this;
+    }
+
     public function build(): FlagKitOptions
     {
         return new FlagKitOptions(
@@ -287,7 +339,11 @@ class FlagKitOptionsBuilder
             keyRotationGracePeriod: $this->keyRotationGracePeriod,
             strictPIIMode: $this->strictPIIMode,
             enableRequestSigning: $this->enableRequestSigning,
-            enableCacheEncryption: $this->enableCacheEncryption
+            enableCacheEncryption: $this->enableCacheEncryption,
+            persistEvents: $this->persistEvents,
+            eventStoragePath: $this->eventStoragePath,
+            maxPersistedEvents: $this->maxPersistedEvents,
+            persistenceFlushInterval: $this->persistenceFlushInterval
         );
     }
 }
