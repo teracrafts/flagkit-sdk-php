@@ -15,6 +15,12 @@
         <testsuite name="default">
             <directory>tests</directory>
         </testsuite>
+        <testsuite name="security">
+            <file>tests/JitterTest.php</file>
+            <file>tests/BootstrapVerificationTest.php</file>
+            <file>tests/ErrorSanitizerTest.php</file>
+            <file>tests/StrictPIIModeTest.php</file>
+        </testsuite>
     </testsuites>
 
     <source restrictDeprecations="true" restrictNotices="true" restrictWarnings="true">
