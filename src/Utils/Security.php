@@ -465,6 +465,111 @@ class Security
 
         return hash_equals($expectedSignature, $signedPayload->signature);
     }
+
+    /**
+     * Canonicalize an object for consistent JSON serialization.
+     * Sorts keys alphabetically and recursively processes nested arrays.
+     *
+     * @param array<string, mixed> $obj
+     */
+    public static function canonicalizeObject(array $obj): string
+    {
+        $sorted = self::sortKeysRecursively($obj);
+        return json_encode($sorted, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Sort array keys recursively for consistent serialization.
+     *
+     * @param array<string, mixed> $array
+     * @return array<string, mixed>
+     */
+    private static function sortKeysRecursively(array $array): array
+    {
+        // Check if this is an associative array
+        if (self::isAssociativeArray($array)) {
+            ksort($array);
+        }
+
+        foreach ($array as $key => $value) {
+            if (is_array($value)) {
+                $array[$key] = self::sortKeysRecursively($value);
+            }
+        }
+
+        return $array;
+    }
+
+    /**
+     * Verify bootstrap signature using HMAC-SHA256.
+     *
+     * Bootstrap format:
+     * [
+     *     'flags' => ['feature' => true, ...],
+     *     'signature' => 'hmac-hex-string',
+     *     'timestamp' => 1234567890000 // Unix timestamp in ms
+     * ]
+     *
+     * @param array<string, mixed> $bootstrap The bootstrap data to verify
+     * @param string $apiKey The API key to use for verification
+     * @param bool $enabled Whether verification is enabled
+     * @param int $maxAge Maximum age in milliseconds (default: 24 hours)
+     * @param string $onFailure Behavior on failure: 'warn', 'error', or 'ignore'
+     * @return array{valid: bool, error: ?string}
+     */
+    public static function verifyBootstrapSignature(
+        array $bootstrap,
+        string $apiKey,
+        bool $enabled = true,
+        int $maxAge = 86400000,
+        string $onFailure = 'warn'
+    ): array {
+        // If verification is disabled or onFailure is 'ignore', skip verification
+        if (!$enabled || $onFailure === 'ignore') {
+            return ['valid' => true, 'error' => null];
+        }
+
+        // Check if this is the new format with signature
+        if (!isset($bootstrap['signature'])) {
+            // Legacy format - no signature to verify
+            return ['valid' => true, 'error' => null];
+        }
+
+        // Verify required fields exist
+        if (!isset($bootstrap['flags']) || !is_array($bootstrap['flags'])) {
+            return ['valid' => false, 'error' => 'Bootstrap missing flags field'];
+        }
+
+        if (!isset($bootstrap['timestamp']) || !is_int($bootstrap['timestamp'])) {
+            return ['valid' => false, 'error' => 'Bootstrap missing or invalid timestamp'];
+        }
+
+        // Check timestamp age
+        $now = (int) (microtime(true) * 1000);
+        $age = $now - $bootstrap['timestamp'];
+
+        if ($age < 0) {
+            return ['valid' => false, 'error' => 'Bootstrap timestamp is in the future'];
+        }
+
+        if ($age > $maxAge) {
+            return ['valid' => false, 'error' => 'Bootstrap timestamp has expired'];
+        }
+
+        // Create the message to verify: timestamp.canonicalizedFlags
+        $canonicalizedFlags = self::canonicalizeObject($bootstrap['flags']);
+        $message = "{$bootstrap['timestamp']}.{$canonicalizedFlags}";
+
+        // Generate expected signature
+        $expectedSignature = self::generateHMACSHA256($message, $apiKey);
+
+        // Constant-time comparison
+        if (!hash_equals($expectedSignature, $bootstrap['signature'])) {
+            return ['valid' => false, 'error' => 'Invalid bootstrap signature'];
+        }
+
+        return ['valid' => true, 'error' => null];
+    }
 }
 
 /**

@@ -25,6 +25,7 @@ class FlagKitOptions
     public const DEFAULT_PERSISTENCE_FLUSH_INTERVAL = 1000;
     public const DEFAULT_EVALUATION_JITTER_MIN_MS = 5;
     public const DEFAULT_EVALUATION_JITTER_MAX_MS = 15;
+    public const DEFAULT_BOOTSTRAP_VERIFICATION_MAX_AGE = 86400000; // 24 hours in ms
 
     public function __construct(
         public readonly string $apiKey,
@@ -66,7 +67,13 @@ class FlagKitOptions
         /** Minimum jitter delay in milliseconds. Default: 5 */
         public readonly int $evaluationJitterMinMs = self::DEFAULT_EVALUATION_JITTER_MIN_MS,
         /** Maximum jitter delay in milliseconds. Default: 15 */
-        public readonly int $evaluationJitterMaxMs = self::DEFAULT_EVALUATION_JITTER_MAX_MS
+        public readonly int $evaluationJitterMaxMs = self::DEFAULT_EVALUATION_JITTER_MAX_MS,
+        /** Enable HMAC-SHA256 signature verification for bootstrap values. Default: true */
+        public readonly bool $bootstrapVerificationEnabled = true,
+        /** Maximum age in milliseconds for bootstrap timestamp. Default: 86400000 (24 hours) */
+        public readonly int $bootstrapVerificationMaxAge = self::DEFAULT_BOOTSTRAP_VERIFICATION_MAX_AGE,
+        /** Behavior on verification failure: 'warn' (log and continue), 'error' (throw), 'ignore' (skip verification). Default: 'warn' */
+        public readonly string $bootstrapVerificationOnFailure = 'warn'
     ) {
     }
 
@@ -166,6 +173,21 @@ class FlagKitOptions
                 'Evaluation jitter max must be greater than or equal to min'
             );
         }
+
+        if ($this->bootstrapVerificationMaxAge <= 0) {
+            throw FlagKitException::configError(
+                ErrorCode::ConfigInvalidInterval,
+                'Bootstrap verification max age must be positive'
+            );
+        }
+
+        $validOnFailure = ['warn', 'error', 'ignore'];
+        if (!in_array($this->bootstrapVerificationOnFailure, $validOnFailure, true)) {
+            throw FlagKitException::configError(
+                ErrorCode::ConfigInvalidInterval,
+                "Bootstrap verification on failure must be one of: " . implode(', ', $validOnFailure)
+            );
+        }
     }
 
     public static function builder(string $apiKey): FlagKitOptionsBuilder
@@ -202,6 +224,9 @@ class FlagKitOptionsBuilder
     private bool $evaluationJitterEnabled = false;
     private int $evaluationJitterMinMs = FlagKitOptions::DEFAULT_EVALUATION_JITTER_MIN_MS;
     private int $evaluationJitterMaxMs = FlagKitOptions::DEFAULT_EVALUATION_JITTER_MAX_MS;
+    private bool $bootstrapVerificationEnabled = true;
+    private int $bootstrapVerificationMaxAge = FlagKitOptions::DEFAULT_BOOTSTRAP_VERIFICATION_MAX_AGE;
+    private string $bootstrapVerificationOnFailure = 'warn';
 
     public function __construct(
         private readonly string $apiKey
@@ -361,6 +386,24 @@ class FlagKitOptionsBuilder
         return $this;
     }
 
+    public function bootstrapVerificationEnabled(bool $enabled): self
+    {
+        $this->bootstrapVerificationEnabled = $enabled;
+        return $this;
+    }
+
+    public function bootstrapVerificationMaxAge(int $milliseconds): self
+    {
+        $this->bootstrapVerificationMaxAge = $milliseconds;
+        return $this;
+    }
+
+    public function bootstrapVerificationOnFailure(string $behavior): self
+    {
+        $this->bootstrapVerificationOnFailure = $behavior;
+        return $this;
+    }
+
     public function build(): FlagKitOptions
     {
         return new FlagKitOptions(
@@ -389,7 +432,10 @@ class FlagKitOptionsBuilder
             persistenceFlushInterval: $this->persistenceFlushInterval,
             evaluationJitterEnabled: $this->evaluationJitterEnabled,
             evaluationJitterMinMs: $this->evaluationJitterMinMs,
-            evaluationJitterMaxMs: $this->evaluationJitterMaxMs
+            evaluationJitterMaxMs: $this->evaluationJitterMaxMs,
+            bootstrapVerificationEnabled: $this->bootstrapVerificationEnabled,
+            bootstrapVerificationMaxAge: $this->bootstrapVerificationMaxAge,
+            bootstrapVerificationOnFailure: $this->bootstrapVerificationOnFailure
         );
     }
 }

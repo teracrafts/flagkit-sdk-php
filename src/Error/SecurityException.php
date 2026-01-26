@@ -57,4 +57,14 @@ class SecurityException extends FlagKitException
             "Decryption failed: {$message}"
         );
     }
+
+    public static function bootstrapVerificationFailed(string $message): self
+    {
+        return new self(
+            ErrorCode::SecurityBootstrapVerificationFailed,
+            "Bootstrap verification failed: {$message}. " .
+            'The bootstrap data may have been tampered with or is expired. ' .
+            'See: https://docs.flagkit.dev/sdk/security#bootstrap-verification'
+        );
+    }
 }

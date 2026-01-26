@@ -81,6 +81,7 @@ enum ErrorCode: string
     case SecurityKeyRotationFailed = 'SECURITY_KEY_ROTATION_FAILED';
     case SecurityEncryptionFailed = 'SECURITY_ENCRYPTION_FAILED';
     case SecurityDecryptionFailed = 'SECURITY_DECRYPTION_FAILED';
+    case SecurityBootstrapVerificationFailed = 'SECURITY_BOOTSTRAP_VERIFICATION_FAILED';
 
     // Configuration errors
     case ConfigInvalidUrl = 'CONFIG_INVALID_URL';

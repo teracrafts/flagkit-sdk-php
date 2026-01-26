@@ -740,6 +740,58 @@ class FlagKitClient
      */
     private function loadBootstrap(array $bootstrap): void
     {
+        // Determine if this is the new format (has 'flags' key) or legacy format
+        if (isset($bootstrap['flags']) && is_array($bootstrap['flags'])) {
+            // New format - verify signature if present
+            $this->applyBootstrap($bootstrap);
+        } else {
+            // Legacy format - load directly
+            $this->applyLegacyBootstrap($bootstrap);
+        }
+    }
+
+    /**
+     * Apply bootstrap with optional signature verification.
+     *
+     * @param array<string, mixed> $bootstrap
+     */
+    private function applyBootstrap(array $bootstrap): void
+    {
+        // Verify signature if present
+        if (isset($bootstrap['signature'])) {
+            $result = Security::verifyBootstrapSignature(
+                $bootstrap,
+                $this->options->apiKey,
+                $this->options->bootstrapVerificationEnabled,
+                $this->options->bootstrapVerificationMaxAge,
+                $this->options->bootstrapVerificationOnFailure
+            );
+
+            if (!$result['valid']) {
+                $this->handleBootstrapVerificationFailure($result['error']);
+                return;
+            }
+        }
+
+        // Load flags from the new format
+        foreach ($bootstrap['flags'] as $key => $value) {
+            $flag = new FlagState(
+                key: $key,
+                value: FlagValue::from($value),
+                enabled: true,
+                version: 0
+            );
+            $this->cache->set($key, $flag);
+        }
+    }
+
+    /**
+     * Apply legacy bootstrap format (direct key-value pairs).
+     *
+     * @param array<string, mixed> $bootstrap
+     */
+    private function applyLegacyBootstrap(array $bootstrap): void
+    {
         foreach ($bootstrap as $key => $value) {
             $flag = new FlagState(
                 key: $key,
@@ -748,6 +800,32 @@ class FlagKitClient
                 version: 0
             );
             $this->cache->set($key, $flag);
+        }
+    }
+
+    /**
+     * Handle bootstrap verification failure based on onFailure setting.
+     */
+    private function handleBootstrapVerificationFailure(?string $error): void
+    {
+        $message = "[FlagKit Security] Bootstrap verification failed: {$error}";
+
+        switch ($this->options->bootstrapVerificationOnFailure) {
+            case 'error':
+                throw SecurityException::bootstrapVerificationFailed($error ?? 'Unknown error');
+
+            case 'warn':
+                error_log($message);
+                // Trigger error callback if set
+                if ($this->onError !== null) {
+                    ($this->onError)(SecurityException::bootstrapVerificationFailed($error ?? 'Unknown error'));
+                }
+                break;
+
+            case 'ignore':
+            default:
+                // Do nothing
+                break;
         }
     }
 
