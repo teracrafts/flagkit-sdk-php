@@ -624,8 +624,10 @@ class EventQueue
         }
 
         // Check enabled list
-        if (in_array('*', $this->config->enabledEventTypes, true) ||
-            in_array($eventType, $this->config->enabledEventTypes, true)) {
+        if (
+            in_array('*', $this->config->enabledEventTypes, true) ||
+            in_array($eventType, $this->config->enabledEventTypes, true)
+        ) {
             return true;
         }
 
