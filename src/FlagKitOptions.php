@@ -26,6 +26,8 @@ class FlagKitOptions
     public const DEFAULT_EVALUATION_JITTER_MIN_MS = 5;
     public const DEFAULT_EVALUATION_JITTER_MAX_MS = 15;
     public const DEFAULT_BOOTSTRAP_VERIFICATION_MAX_AGE = 86400000; // 24 hours in ms
+    public const DEFAULT_ERROR_SANITIZATION_ENABLED = true;
+    public const DEFAULT_ERROR_SANITIZATION_PRESERVE_ORIGINAL = false;
 
     public function __construct(
         public readonly string $apiKey,
@@ -73,7 +75,11 @@ class FlagKitOptions
         /** Maximum age in milliseconds for bootstrap timestamp. Default: 86400000 (24 hours) */
         public readonly int $bootstrapVerificationMaxAge = self::DEFAULT_BOOTSTRAP_VERIFICATION_MAX_AGE,
         /** Behavior on verification failure: 'warn' (log and continue), 'error' (throw), 'ignore' (skip verification). Default: 'warn' */
-        public readonly string $bootstrapVerificationOnFailure = 'warn'
+        public readonly string $bootstrapVerificationOnFailure = 'warn',
+        /** Enable error message sanitization to prevent information leakage. Default: true */
+        public readonly bool $errorSanitizationEnabled = self::DEFAULT_ERROR_SANITIZATION_ENABLED,
+        /** Preserve original unsanitized error messages for debugging. Default: false */
+        public readonly bool $errorSanitizationPreserveOriginal = self::DEFAULT_ERROR_SANITIZATION_PRESERVE_ORIGINAL
     ) {
     }
 
@@ -227,6 +233,8 @@ class FlagKitOptionsBuilder
     private bool $bootstrapVerificationEnabled = true;
     private int $bootstrapVerificationMaxAge = FlagKitOptions::DEFAULT_BOOTSTRAP_VERIFICATION_MAX_AGE;
     private string $bootstrapVerificationOnFailure = 'warn';
+    private bool $errorSanitizationEnabled = FlagKitOptions::DEFAULT_ERROR_SANITIZATION_ENABLED;
+    private bool $errorSanitizationPreserveOriginal = FlagKitOptions::DEFAULT_ERROR_SANITIZATION_PRESERVE_ORIGINAL;
 
     public function __construct(
         private readonly string $apiKey
@@ -404,6 +412,18 @@ class FlagKitOptionsBuilder
         return $this;
     }
 
+    public function errorSanitizationEnabled(bool $enabled): self
+    {
+        $this->errorSanitizationEnabled = $enabled;
+        return $this;
+    }
+
+    public function errorSanitizationPreserveOriginal(bool $preserve): self
+    {
+        $this->errorSanitizationPreserveOriginal = $preserve;
+        return $this;
+    }
+
     public function build(): FlagKitOptions
     {
         return new FlagKitOptions(
@@ -435,7 +455,9 @@ class FlagKitOptionsBuilder
             evaluationJitterMaxMs: $this->evaluationJitterMaxMs,
             bootstrapVerificationEnabled: $this->bootstrapVerificationEnabled,
             bootstrapVerificationMaxAge: $this->bootstrapVerificationMaxAge,
-            bootstrapVerificationOnFailure: $this->bootstrapVerificationOnFailure
+            bootstrapVerificationOnFailure: $this->bootstrapVerificationOnFailure,
+            errorSanitizationEnabled: $this->errorSanitizationEnabled,
+            errorSanitizationPreserveOriginal: $this->errorSanitizationPreserveOriginal
         );
     }
 }

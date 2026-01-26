@@ -9,12 +9,65 @@ use Throwable;
 
 class FlagKitException extends Exception
 {
+    /**
+     * Global sanitization settings (set by FlagKit client).
+     */
+    private static bool $sanitizationEnabled = true;
+    private static bool $preserveOriginal = false;
+
+    /**
+     * The original unsanitized message (if preservation is enabled).
+     */
+    private ?string $originalMessage = null;
+
     public function __construct(
         private readonly ErrorCode $errorCode,
         string $message,
         ?Throwable $previous = null
     ) {
-        parent::__construct("[{$errorCode->value}] {$message}", 0, $previous);
+        $sanitizedMessage = ErrorSanitizer::sanitizeWithPreservation(
+            $message,
+            self::$sanitizationEnabled,
+            self::$preserveOriginal
+        );
+
+        if (self::$preserveOriginal) {
+            $this->originalMessage = $message;
+        }
+
+        parent::__construct("[{$errorCode->value}] {$sanitizedMessage}", 0, $previous);
+    }
+
+    /**
+     * Configure global sanitization settings.
+     *
+     * @param bool $enabled Whether to enable sanitization
+     * @param bool $preserveOriginal Whether to preserve original messages
+     */
+    public static function configureSanitization(bool $enabled = true, bool $preserveOriginal = false): void
+    {
+        self::$sanitizationEnabled = $enabled;
+        self::$preserveOriginal = $preserveOriginal;
+    }
+
+    /**
+     * Get the original unsanitized message (if preservation was enabled).
+     *
+     * @return string|null The original message, or null if not preserved
+     */
+    public function getOriginalMessage(): ?string
+    {
+        return $this->originalMessage;
+    }
+
+    /**
+     * Check if sanitization is currently enabled.
+     *
+     * @return bool True if sanitization is enabled
+     */
+    public static function isSanitizationEnabled(): bool
+    {
+        return self::$sanitizationEnabled;
     }
 
     public function getErrorCode(): ErrorCode
