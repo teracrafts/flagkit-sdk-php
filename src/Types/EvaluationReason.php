@@ -49,7 +49,7 @@ enum EvaluationReason: string
     /**
      * Create from a string value, with fallback to Default.
      */
-    public static function from(string $value): self
+    public static function fromString(string $value): self
     {
         return match (strtoupper($value)) {
             'FLAG_NOT_FOUND' => self::FlagNotFound,

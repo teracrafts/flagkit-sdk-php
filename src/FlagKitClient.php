@@ -297,6 +297,7 @@ class FlagKitClient
      */
     public function evaluate(string $flagKey, ?EvaluationContext $context = null): EvaluationResult
     {
+        $this->applyEvaluationJitter();
         $mergedContext = $this->contextManager->getMergedContext($context);
         $flag = $this->cache->get($flagKey);
 
@@ -355,7 +356,7 @@ class FlagKitClient
                 flagKey: $response['flagKey'],
                 value: FlagValue::from($response['value']),
                 enabled: $response['enabled'] ?? false,
-                reason: EvaluationReason::from($response['reason'] ?? 'server'),
+                reason: EvaluationReason::fromString($response['reason'] ?? 'server'),
                 version: $response['version'] ?? 0
             );
 
@@ -394,7 +395,7 @@ class FlagKitClient
                         flagKey: $flagData['flagKey'] ?? $key,
                         value: FlagValue::from($flagData['value']),
                         enabled: $flagData['enabled'] ?? false,
-                        reason: EvaluationReason::from($flagData['reason'] ?? 'server'),
+                        reason: EvaluationReason::fromString($flagData['reason'] ?? 'server'),
                         version: $flagData['version'] ?? 0
                     );
                 }
@@ -691,6 +692,27 @@ class FlagKitClient
     // --------------------------------------------------
     // Private helper methods
     // --------------------------------------------------
+
+    /**
+     * Apply evaluation jitter to protect against cache timing attacks.
+     *
+     * When enabled, adds a random delay before flag evaluation to make it
+     * harder for attackers to determine cache state based on response timing.
+     */
+    private function applyEvaluationJitter(): void
+    {
+        if (!$this->options->evaluationJitterEnabled) {
+            return;
+        }
+
+        $jitterMs = random_int(
+            $this->options->evaluationJitterMinMs,
+            $this->options->evaluationJitterMaxMs
+        );
+
+        // usleep takes microseconds, so multiply by 1000
+        usleep($jitterMs * 1000);
+    }
 
     private function setupPollingManager(): void
     {

@@ -23,6 +23,8 @@ class FlagKitOptions
     public const DEFAULT_KEY_ROTATION_GRACE_PERIOD = 300;
     public const DEFAULT_MAX_PERSISTED_EVENTS = 10000;
     public const DEFAULT_PERSISTENCE_FLUSH_INTERVAL = 1000;
+    public const DEFAULT_EVALUATION_JITTER_MIN_MS = 5;
+    public const DEFAULT_EVALUATION_JITTER_MAX_MS = 15;
 
     public function __construct(
         public readonly string $apiKey,
@@ -58,7 +60,13 @@ class FlagKitOptions
         /** Maximum number of events to persist. Default: 10000 */
         public readonly int $maxPersistedEvents = self::DEFAULT_MAX_PERSISTED_EVENTS,
         /** Flush interval for event persistence in milliseconds. Default: 1000 */
-        public readonly int $persistenceFlushInterval = self::DEFAULT_PERSISTENCE_FLUSH_INTERVAL
+        public readonly int $persistenceFlushInterval = self::DEFAULT_PERSISTENCE_FLUSH_INTERVAL,
+        /** Enable evaluation jitter to protect against cache timing attacks. Default: false */
+        public readonly bool $evaluationJitterEnabled = false,
+        /** Minimum jitter delay in milliseconds. Default: 5 */
+        public readonly int $evaluationJitterMinMs = self::DEFAULT_EVALUATION_JITTER_MIN_MS,
+        /** Maximum jitter delay in milliseconds. Default: 15 */
+        public readonly int $evaluationJitterMaxMs = self::DEFAULT_EVALUATION_JITTER_MAX_MS
     ) {
     }
 
@@ -144,6 +152,20 @@ class FlagKitOptions
                 'Persistence flush interval must be positive'
             );
         }
+
+        if ($this->evaluationJitterMinMs < 0) {
+            throw FlagKitException::configError(
+                ErrorCode::ConfigInvalidInterval,
+                'Evaluation jitter min must be non-negative'
+            );
+        }
+
+        if ($this->evaluationJitterMaxMs < $this->evaluationJitterMinMs) {
+            throw FlagKitException::configError(
+                ErrorCode::ConfigInvalidInterval,
+                'Evaluation jitter max must be greater than or equal to min'
+            );
+        }
     }
 
     public static function builder(string $apiKey): FlagKitOptionsBuilder
@@ -177,6 +199,9 @@ class FlagKitOptionsBuilder
     private ?string $eventStoragePath = null;
     private int $maxPersistedEvents = FlagKitOptions::DEFAULT_MAX_PERSISTED_EVENTS;
     private int $persistenceFlushInterval = FlagKitOptions::DEFAULT_PERSISTENCE_FLUSH_INTERVAL;
+    private bool $evaluationJitterEnabled = false;
+    private int $evaluationJitterMinMs = FlagKitOptions::DEFAULT_EVALUATION_JITTER_MIN_MS;
+    private int $evaluationJitterMaxMs = FlagKitOptions::DEFAULT_EVALUATION_JITTER_MAX_MS;
 
     public function __construct(
         private readonly string $apiKey
@@ -318,6 +343,24 @@ class FlagKitOptionsBuilder
         return $this;
     }
 
+    public function evaluationJitterEnabled(bool $enabled): self
+    {
+        $this->evaluationJitterEnabled = $enabled;
+        return $this;
+    }
+
+    public function evaluationJitterMinMs(int $milliseconds): self
+    {
+        $this->evaluationJitterMinMs = $milliseconds;
+        return $this;
+    }
+
+    public function evaluationJitterMaxMs(int $milliseconds): self
+    {
+        $this->evaluationJitterMaxMs = $milliseconds;
+        return $this;
+    }
+
     public function build(): FlagKitOptions
     {
         return new FlagKitOptions(
@@ -343,7 +386,10 @@ class FlagKitOptionsBuilder
             persistEvents: $this->persistEvents,
             eventStoragePath: $this->eventStoragePath,
             maxPersistedEvents: $this->maxPersistedEvents,
-            persistenceFlushInterval: $this->persistenceFlushInterval
+            persistenceFlushInterval: $this->persistenceFlushInterval,
+            evaluationJitterEnabled: $this->evaluationJitterEnabled,
+            evaluationJitterMinMs: $this->evaluationJitterMinMs,
+            evaluationJitterMaxMs: $this->evaluationJitterMaxMs
         );
     }
 }
