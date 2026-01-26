@@ -22,7 +22,7 @@ class ErrorSanitizer
      */
     private const PATTERNS = [
         // Unix file paths (negative lookbehind to exclude URLs like https://... and http://...)
-        '/(?<![:\w])\/(?:[\w.-]+\/)+[\w.-]+/' => '[PATH]',
+        '/(?<![:\/\w])\/(?:[\w.-]+\/)+[\w.-]+/' => '[PATH]',
         // Windows file paths
         '/[A-Za-z]:\\\\(?:[\w\s.-]+\\\\)+[\w.-]*/' => '[PATH]',
         // IP addresses (IPv4)
