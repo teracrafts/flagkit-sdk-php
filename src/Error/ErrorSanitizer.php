@@ -24,7 +24,7 @@ class ErrorSanitizer
         // Unix file paths (negative lookbehind to exclude URLs like https://... and http://...)
         '/(?<![:\w])\/(?:[\w.-]+\/)+[\w.-]+/' => '[PATH]',
         // Windows file paths
-        '/[A-Za-z]:\\\\(?:[\w.-]+\\\\)+[\w.-]*/' => '[PATH]',
+        '/[A-Za-z]:\\\\(?:[\w\s.-]+\\\\)+[\w.-]*/' => '[PATH]',
         // IP addresses (IPv4)
         '/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/' => '[IP]',
         // SDK API keys
@@ -34,7 +34,7 @@ class ErrorSanitizer
         // CLI API keys
         '/cli_[a-zA-Z0-9_-]{8,}/' => 'cli_[REDACTED]',
         // Email addresses
-        '/[\w.-]+@[\w.-]+\.\w+/' => '[EMAIL]',
+        '/[\w.+-]+@[\w.-]+\.\w+/' => '[EMAIL]',
         // Database connection strings (postgres, mysql, mongodb, redis)
         '/(?:postgres|mysql|mongodb|redis):\/\/[^\s]+/i' => '[CONNECTION_STRING]',
     ];
