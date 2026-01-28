@@ -36,7 +36,8 @@
     "scripts": {
         "test": "phpunit",
         "lint": "phpcs src tests",
-        "analyse": "phpstan analyse src"
+        "analyse": "phpstan analyse src",
+        "lab": "php sdk-lab/run.php"
     },
     "config": {
         "sort-packages": true
