@@ -8,6 +8,7 @@ use FlagKit\Error\ErrorCode;
 use FlagKit\Error\FlagKitException;
 use FlagKit\Error\SecurityException;
 use FlagKit\Utils\Security;
+use Psr\Log\LoggerInterface;
 
 class FlagKitOptions
 {
@@ -79,7 +80,9 @@ class FlagKitOptions
         /** Enable error message sanitization to prevent information leakage. Default: true */
         public readonly bool $errorSanitizationEnabled = self::DEFAULT_ERROR_SANITIZATION_ENABLED,
         /** Preserve original unsanitized error messages for debugging. Default: false */
-        public readonly bool $errorSanitizationPreserveOriginal = self::DEFAULT_ERROR_SANITIZATION_PRESERVE_ORIGINAL
+        public readonly bool $errorSanitizationPreserveOriginal = self::DEFAULT_ERROR_SANITIZATION_PRESERVE_ORIGINAL,
+        /** PSR-3 Logger for SDK logging. If null, uses error_log for warnings/errors. */
+        public readonly ?LoggerInterface $logger = null
     ) {
     }
 
@@ -235,6 +238,7 @@ class FlagKitOptionsBuilder
     private string $bootstrapVerificationOnFailure = 'warn';
     private bool $errorSanitizationEnabled = FlagKitOptions::DEFAULT_ERROR_SANITIZATION_ENABLED;
     private bool $errorSanitizationPreserveOriginal = FlagKitOptions::DEFAULT_ERROR_SANITIZATION_PRESERVE_ORIGINAL;
+    private ?LoggerInterface $logger = null;
 
     public function __construct(
         private readonly string $apiKey
@@ -424,6 +428,12 @@ class FlagKitOptionsBuilder
         return $this;
     }
 
+    public function logger(LoggerInterface $logger): self
+    {
+        $this->logger = $logger;
+        return $this;
+    }
+
     public function build(): FlagKitOptions
     {
         return new FlagKitOptions(
@@ -457,7 +467,8 @@ class FlagKitOptionsBuilder
             bootstrapVerificationMaxAge: $this->bootstrapVerificationMaxAge,
             bootstrapVerificationOnFailure: $this->bootstrapVerificationOnFailure,
             errorSanitizationEnabled: $this->errorSanitizationEnabled,
-            errorSanitizationPreserveOriginal: $this->errorSanitizationPreserveOriginal
+            errorSanitizationPreserveOriginal: $this->errorSanitizationPreserveOriginal,
+            logger: $this->logger
         );
     }
 }
