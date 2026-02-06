@@ -20,6 +20,8 @@ use FlagKit\Types\EvaluationResult;
 use FlagKit\Types\FlagState;
 use FlagKit\Types\FlagValue;
 use FlagKit\Utils\Security;
+use FlagKit\Utils\VersionUtils;
+use Psr\Log\LoggerInterface;
 
 /**
  * FlagKit client for feature flag evaluation.
@@ -41,6 +43,7 @@ class FlagKitClient
     private ContextManager $contextManager;
     private ?EventQueue $eventQueue = null;
     private ?PollingManager $pollingManager = null;
+    private ?LoggerInterface $logger = null;
 
     private bool $initialized = false;
     private bool $ready = false;
@@ -60,7 +63,8 @@ class FlagKitClient
     ) {
         $options->validate();
 
-        $this->httpClient = new HttpClient($options);
+        $this->logger = $options->logger;
+        $this->httpClient = new HttpClient($options, $this->logger);
         $this->cache = new FlagCache($options->maxCacheSize, $options->cacheTtl);
         $this->contextManager = new ContextManager();
         $this->sessionId = $this->generateSessionId();
@@ -132,6 +136,9 @@ class FlagKitClient
                     (new PollingConfig())->withInterval((int) $response['pollingIntervalSeconds'])
                 );
             }
+
+            // Check SDK version metadata and emit warnings
+            $this->checkVersionMetadata($response);
 
             $this->initialized = true;
             $this->ready = true;
@@ -872,6 +879,105 @@ class FlagKitClient
                 // Log warning when not in strict mode
                 error_log($piiResult->message);
             }
+        }
+    }
+
+    /**
+     * Check SDK version metadata from init response and emit appropriate warnings.
+     *
+     * Per spec, the SDK should parse and surface:
+     * - sdkVersionMin: Minimum required version (older may not work)
+     * - sdkVersionRecommended: Recommended version for optimal experience
+     * - sdkVersionLatest: Latest available version
+     * - deprecationWarning: Server-provided deprecation message
+     *
+     * @param array<string, mixed> $response The init response from the server
+     */
+    private function checkVersionMetadata(array $response): void
+    {
+        $metadata = $response['metadata'] ?? null;
+        if (!is_array($metadata)) {
+            return;
+        }
+
+        $sdkVersion = self::SDK_VERSION;
+
+        // Check for server-provided deprecation warning first
+        if (!empty($metadata['deprecationWarning'])) {
+            $this->logWarning("[FlagKit] Deprecation Warning: {$metadata['deprecationWarning']}");
+        }
+
+        // Check minimum version requirement
+        if (!empty($metadata['sdkVersionMin'])) {
+            $minVersion = $metadata['sdkVersionMin'];
+            if (VersionUtils::isVersionLessThan($sdkVersion, $minVersion)) {
+                $this->logError(
+                    "[FlagKit] SDK version {$sdkVersion} is below minimum required version {$minVersion}. " .
+                    'Some features may not work correctly. Please upgrade the SDK.'
+                );
+            }
+        }
+
+        // Check recommended version
+        $warnedAboutRecommended = false;
+        if (!empty($metadata['sdkVersionRecommended'])) {
+            $recommendedVersion = $metadata['sdkVersionRecommended'];
+            if (VersionUtils::isVersionLessThan($sdkVersion, $recommendedVersion)) {
+                $this->logWarning(
+                    "[FlagKit] SDK version {$sdkVersion} is below recommended version {$recommendedVersion}. " .
+                    'Consider upgrading for the best experience.'
+                );
+                $warnedAboutRecommended = true;
+            }
+        }
+
+        // Log if a newer version is available (info level, not a warning)
+        // Only log if we haven't already warned about recommended
+        if (!empty($metadata['sdkVersionLatest']) && !$warnedAboutRecommended) {
+            $latestVersion = $metadata['sdkVersionLatest'];
+            if (VersionUtils::isVersionLessThan($sdkVersion, $latestVersion)) {
+                $this->logInfo(
+                    "[FlagKit] SDK version {$sdkVersion} - a newer version {$latestVersion} is available."
+                );
+            }
+        }
+    }
+
+    /**
+     * Log an error message using the configured logger or error_log fallback.
+     */
+    private function logError(string $message): void
+    {
+        if ($this->logger !== null) {
+            $this->logger->error($message);
+        } else {
+            error_log($message);
+        }
+    }
+
+    /**
+     * Log a warning message using the configured logger or error_log fallback.
+     */
+    private function logWarning(string $message): void
+    {
+        if ($this->logger !== null) {
+            $this->logger->warning($message);
+        } else {
+            error_log($message);
+        }
+    }
+
+    /**
+     * Log an info message using the configured logger or error_log fallback.
+     */
+    private function logInfo(string $message): void
+    {
+        if ($this->logger !== null) {
+            $this->logger->info($message);
+        } else {
+            // For info level, we still log it but at a lower priority
+            // Some users may not want info messages cluttering their logs
+            error_log($message);
         }
     }
 }
