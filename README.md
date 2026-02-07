@@ -10,7 +10,7 @@ Official PHP SDK for [FlagKit](https://flagkit.dev) feature flag service.
 ## Installation
 
 ```bash
-composer require flagkit/flagkit-sdk
+composer require teracrafts/flagkit
 ```
 
 ## Features
