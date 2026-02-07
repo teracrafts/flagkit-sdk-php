@@ -1,5 +1,5 @@
 {
-    "name": "flagkit/flagkit-sdk",
+    "name": "teracrafts/flagkit",
     "description": "Official PHP SDK for FlagKit feature flag management",
     "type": "library",
     "license": "MIT",
