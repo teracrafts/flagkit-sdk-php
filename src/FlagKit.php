@@ -36,7 +36,7 @@ use FlagKit\Types\FlagState;
 final class FlagKit
 {
     /** SDK Version */
-    public const VERSION = '1.0.7';
+    public const VERSION = '1.0.8';
 
     private static ?FlagKitClient $instance = null;
 

@@ -35,7 +35,7 @@ use Psr\Log\LoggerInterface;
  */
 class FlagKitClient
 {
-    public const SDK_VERSION = '1.0.7';
+    public const SDK_VERSION = '1.0.8';
     public const SDK_LANGUAGE = 'php';
 
     private HttpClient $httpClient;
