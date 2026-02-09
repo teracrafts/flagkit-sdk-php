@@ -18,7 +18,7 @@ use Psr\Log\LoggerInterface;
 class HttpClient
 {
     private const BASE_URL = 'https://api.flagkit.dev/api/v1';
-    private const SDK_VERSION = '1.0.6';
+    private const SDK_VERSION = '1.0.7';
 
     private Client $client;
     private CircuitBreaker $circuitBreaker;
