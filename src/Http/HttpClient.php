@@ -20,7 +20,7 @@ class HttpClient
     private const BASE_URL = 'https://api.flagkit.dev/api/v1';
     private const BETA_BASE_URL = 'https://api.beta.flagkit.dev/api/v1';
     private const LOCAL_BASE_URL = 'https://api.flagkit.on/api/v1';
-    private const SDK_VERSION = '1.0.8';
+    private const SDK_VERSION = '1.0.9';
 
     private Client $client;
     private CircuitBreaker $circuitBreaker;
