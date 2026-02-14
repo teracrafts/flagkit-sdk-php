@@ -77,7 +77,6 @@ enum ErrorCode: string
     // Security errors
     case SecurityError = 'SECURITY_ERROR';
     case SecurityPIIDetected = 'SECURITY_PII_DETECTED';
-    case SecurityLocalPortInProduction = 'SECURITY_LOCAL_PORT_IN_PRODUCTION';
     case SecurityKeyRotationFailed = 'SECURITY_KEY_ROTATION_FAILED';
     case SecurityEncryptionFailed = 'SECURITY_ENCRYPTION_FAILED';
     case SecurityDecryptionFailed = 'SECURITY_DECRYPTION_FAILED';
