@@ -171,7 +171,6 @@ class FlagKitException extends Exception
         return in_array($this->errorCode, [
             ErrorCode::SecurityError,
             ErrorCode::SecurityPIIDetected,
-            ErrorCode::SecurityLocalPortInProduction,
             ErrorCode::SecurityKeyRotationFailed,
             ErrorCode::SecurityEncryptionFailed,
             ErrorCode::SecurityDecryptionFailed,
