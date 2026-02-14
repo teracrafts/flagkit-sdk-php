@@ -18,6 +18,8 @@ use Psr\Log\LoggerInterface;
 class HttpClient
 {
     private const BASE_URL = 'https://api.flagkit.dev/api/v1';
+    private const BETA_BASE_URL = 'https://api.beta.flagkit.dev/api/v1';
+    private const LOCAL_BASE_URL = 'https://api.flagkit.on/api/v1';
     private const SDK_VERSION = '1.0.8';
 
     private Client $client;
@@ -27,12 +29,16 @@ class HttpClient
     private ?LoggerInterface $logger = null;
 
     /**
-     * Returns the base URL for the given local port, or the default production URL.
+     * Returns the base URL based on internal SDK mode.
      */
-    public static function getBaseUrl(?int $localPort): string
+    public static function getBaseUrl(): string
     {
-        if ($localPort !== null) {
-            return "http://localhost:{$localPort}/api/v1";
+        $mode = strtolower(trim((string) getenv('FLAGKIT_MODE')));
+        if ($mode === 'local') {
+            return self::LOCAL_BASE_URL;
+        }
+        if ($mode === 'beta') {
+            return self::BETA_BASE_URL;
         }
         return self::BASE_URL;
     }
@@ -45,7 +51,7 @@ class HttpClient
         $this->logger = $logger;
 
         $this->client = new Client([
-            'base_uri' => self::getBaseUrl($options->localPort),
+            'base_uri' => self::getBaseUrl(),
             'timeout' => $options->timeout,
         ]);
 
