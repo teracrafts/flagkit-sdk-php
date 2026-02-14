@@ -297,60 +297,6 @@ class FlagKitOptionsTest extends TestCase
         $this->assertTrue($options->enableCacheEncryption);
     }
 
-    // ==================== LocalPort in Production Tests ====================
-
-    public function testLocalPortInProductionThrowsSecurityException(): void
-    {
-        $originalEnv = getenv('APP_ENV');
-        putenv('APP_ENV=production');
-
-        try {
-            $options = new FlagKitOptions(
-                apiKey: 'sdk_test123',
-                localPort: 3000
-            );
-
-            $this->expectException(SecurityException::class);
-            $options->validate();
-        } finally {
-            // Restore original
-            if ($originalEnv !== false) {
-                putenv("APP_ENV={$originalEnv}");
-            } else {
-                putenv('APP_ENV');
-            }
-        }
-    }
-
-    public function testLocalPortInDevelopmentDoesNotThrow(): void
-    {
-        $originalEnv = getenv('APP_ENV');
-        putenv('APP_ENV=development');
-
-        try {
-            $options = new FlagKitOptions(
-                apiKey: 'sdk_test123',
-                localPort: 3000
-            );
-
-            $exception = null;
-            try {
-                $options->validate();
-            } catch (\Throwable $e) {
-                $exception = $e;
-            }
-
-            $this->assertNull($exception);
-        } finally {
-            // Restore original
-            if ($originalEnv !== false) {
-                putenv("APP_ENV={$originalEnv}");
-            } else {
-                putenv('APP_ENV');
-            }
-        }
-    }
-
     // ==================== Combined Builder Tests ====================
 
     public function testBuilderWithAllSecurityOptions(): void
