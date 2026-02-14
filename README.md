@@ -259,15 +259,12 @@ try {
 | `timeout` | 10 | HTTP timeout (seconds) |
 | `retryAttempts` | 3 | Max retry attempts |
 | `bootstrap` | null | Initial flag data |
-| `localPort` | null | Local dev server port (uses `http://localhost:{port}/api/v1`) |
 
 ## Local Development
 
-For local development, use the `localPort` option to connect to a local FlagKit server:
 
 ```php
 $options = FlagKitOptions::builder('sdk_your_api_key')
-    ->localPort(8200)  // Uses http://localhost:8200/api/v1
     ->build();
 
 $client = FlagKit::initialize($options);
