@@ -99,16 +99,55 @@ class HttpClientSecurityTest extends TestCase
 
     public function testGetBaseUrlReturnsProductionUrl(): void
     {
-        $baseUrl = HttpClient::getBaseUrl(null);
+        putenv('FLAGKIT_MODE');
+        $baseUrl = HttpClient::getBaseUrl();
 
         $this->assertEquals('https://api.flagkit.dev/api/v1', $baseUrl);
     }
 
-    public function testGetBaseUrlReturnsLocalUrlWithPort(): void
+    public function testGetBaseUrlReturnsLocalUrlWhenModeIsLocal(): void
     {
-        $baseUrl = HttpClient::getBaseUrl(3000);
+        putenv('FLAGKIT_MODE=local');
+        $baseUrl = HttpClient::getBaseUrl();
 
-        $this->assertEquals('http://localhost:3000/api/v1', $baseUrl);
+        $this->assertEquals('https://api.flagkit.on/api/v1', $baseUrl);
+        putenv('FLAGKIT_MODE');
+    }
+
+    public function testGetBaseUrlReturnsBetaUrlWhenModeIsBeta(): void
+    {
+        putenv('FLAGKIT_MODE=beta');
+        $baseUrl = HttpClient::getBaseUrl();
+
+        $this->assertEquals('https://api.beta.flagkit.dev/api/v1', $baseUrl);
+        putenv('FLAGKIT_MODE');
+    }
+
+    public function testGetBaseUrlIsCaseInsensitive(): void
+    {
+        putenv('FLAGKIT_MODE=LOCAL');
+        $baseUrl = HttpClient::getBaseUrl();
+
+        $this->assertEquals('https://api.flagkit.on/api/v1', $baseUrl);
+        putenv('FLAGKIT_MODE');
+    }
+
+    public function testGetBaseUrlTrimsWhitespace(): void
+    {
+        putenv('FLAGKIT_MODE= local ');
+        $baseUrl = HttpClient::getBaseUrl();
+
+        $this->assertEquals('https://api.flagkit.on/api/v1', $baseUrl);
+        putenv('FLAGKIT_MODE');
+    }
+
+    public function testGetBaseUrlFallsThroughForUnknownMode(): void
+    {
+        putenv('FLAGKIT_MODE=staging');
+        $baseUrl = HttpClient::getBaseUrl();
+
+        $this->assertEquals('https://api.flagkit.dev/api/v1', $baseUrl);
+        putenv('FLAGKIT_MODE');
     }
 
     // ==================== Logger Integration ====================
