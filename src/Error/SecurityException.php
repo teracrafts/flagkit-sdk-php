@@ -24,16 +24,6 @@ class SecurityException extends FlagKitException
         );
     }
 
-    public static function localPortInProduction(): self
-    {
-        return new self(
-            ErrorCode::SecurityLocalPortInProduction,
-            'localPort cannot be used in production environments. ' .
-            'This option is only for local development. ' .
-            'See: https://docs.flagkit.dev/sdk/security#local-development'
-        );
-    }
-
     public static function keyRotationFailed(string $message): self
     {
         return new self(
