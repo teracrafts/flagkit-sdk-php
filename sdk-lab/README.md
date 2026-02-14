@@ -64,3 +64,9 @@ All verifications passed!
 ## Note
 
 This folder is excluded from the Composer package via PSR-4 autoload namespacing.
+
+## Mode Routing
+Use `FLAGKIT_MODE` to control API target during SDK Lab runs:
+- `local` -> `https://api.flagkit.on/api/v1`
+- `beta` -> `https://api.beta.flagkit.dev/api/v1`
+- `carbon` (default) -> `https://api.flagkit.dev/api/v1`
