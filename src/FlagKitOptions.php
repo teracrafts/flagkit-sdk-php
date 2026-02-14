@@ -45,8 +45,6 @@ class FlagKitOptions
         public readonly int $circuitBreakerResetTimeout = self::DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT,
         /** @var array<string, mixed>|null */
         public readonly ?array $bootstrap = null,
-        /** Local development server port. When set, uses http://localhost:{port}/api/v1 */
-        public readonly ?int $localPort = null,
         /** Secondary API key for key rotation support. On 401 errors, SDK will automatically retry with this key. */
         public readonly ?string $secondaryApiKey = null,
         /** Grace period in seconds during key rotation. Default: 300 (5 minutes) */
@@ -128,12 +126,6 @@ class FlagKitOptions
                 );
             }
         }
-
-        // CRITICAL: Prevent localPort from being used in production
-        if ($this->localPort !== null && Security::isProductionEnvironment()) {
-            throw SecurityException::localPortInProduction();
-        }
-
         if ($this->pollingInterval <= 0) {
             throw FlagKitException::configError(
                 ErrorCode::ConfigInvalidPollingInterval,
@@ -220,7 +212,6 @@ class FlagKitOptionsBuilder
     private int $circuitBreakerResetTimeout = FlagKitOptions::DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT;
     /** @var array<string, mixed>|null */
     private ?array $bootstrap = null;
-    private ?int $localPort = null;
     private ?string $secondaryApiKey = null;
     private int $keyRotationGracePeriod = FlagKitOptions::DEFAULT_KEY_ROTATION_GRACE_PERIOD;
     private bool $strictPIIMode = false;
@@ -319,13 +310,6 @@ class FlagKitOptionsBuilder
         $this->bootstrap = $data;
         return $this;
     }
-
-    public function localPort(int $port): self
-    {
-        $this->localPort = $port;
-        return $this;
-    }
-
     public function secondaryApiKey(string $key): self
     {
         $this->secondaryApiKey = $key;
@@ -450,7 +434,6 @@ class FlagKitOptionsBuilder
             circuitBreakerThreshold: $this->circuitBreakerThreshold,
             circuitBreakerResetTimeout: $this->circuitBreakerResetTimeout,
             bootstrap: $this->bootstrap,
-            localPort: $this->localPort,
             secondaryApiKey: $this->secondaryApiKey,
             keyRotationGracePeriod: $this->keyRotationGracePeriod,
             strictPIIMode: $this->strictPIIMode,
